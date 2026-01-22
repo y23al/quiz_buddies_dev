@@ -21,16 +21,23 @@ import {
   sendMessage,
   subscribeToSession,
   subscribeToRoom,
-  getRoom,
   reportMessage,
+  generateAIMessage,
+  isAIPartner,
+  AI_USER_ID,
+  updateDemoSession,
 } from '../../services';
 import { blockUser } from '../../services/authService';
+import { isDemoMode } from '../../config/firebase';
 import { RootStackParamList, Message, Room, CONFIG } from '../../types';
 import { Timer, ChatMessage, ChatInput, LoadingScreen } from '../../components';
 import { calculateRemainingTime } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type OneOnOneRoomRouteProp = RouteProp<RootStackParamList, 'OneOnOneRoom'>;
+
+// デモ用メッセージストレージ
+const demoMessagesLocal: Map<string, Message[]> = new Map();
 
 export const OneOnOneRoomScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -45,9 +52,11 @@ export const OneOnOneRoomScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [isAIMatch, setIsAIMatch] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 相手のユーザーIDを取得
   const partnerUserId = room?.memberUserIds.find((id) => id !== user?.userId);
@@ -63,17 +72,73 @@ export const OneOnOneRoomScreen: React.FC = () => {
         const remaining = calculateRemainingTime(roomData.createdAt, CONFIG.ONE_ON_ONE_SECONDS);
         setRemainingTime(remaining);
         setIsLoading(false);
+
+        // 相手がAIかどうかをチェック
+        const partner = roomData.memberUserIds.find((id) => id !== user?.userId);
+        if (partner && isAIPartner(partner)) {
+          setIsAIMatch(true);
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [roomId, isLoading]);
+  }, [roomId, isLoading, user]);
+
+  // AI相手の場合、自動でメッセージを送信
+  useEffect(() => {
+    if (!isDemoMode || isLoading || !isAIMatch) return;
+
+    const sendAIMessage = () => {
+      // AIが正解者側か不正解者側かによってメッセージを変える
+      const aiMessage = generateAIMessage(
+        roomId,
+        'one_on_one',
+        !isTeacher // ユーザーが教える側なら、AIは学習者側
+      );
+
+      setLocalMessages((prev) => {
+        const newMessages = [...prev, aiMessage];
+        demoMessagesLocal.set(roomId, newMessages);
+        return newMessages;
+      });
+    };
+
+    // 最初のAIメッセージを1秒後に送信
+    const initialTimer = setTimeout(sendAIMessage, 1000);
+
+    // その後、5-10秒ごとにランダムでAIメッセージを送信
+    aiMessageTimerRef.current = setInterval(() => {
+      if (Math.random() > 0.4) {
+        sendAIMessage();
+      }
+    }, 5000 + Math.random() * 5000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (aiMessageTimerRef.current) {
+        clearInterval(aiMessageTimerRef.current);
+      }
+    };
+  }, [isDemoMode, isLoading, isAIMatch, roomId, isTeacher]);
 
   // メッセージをリアルタイム購読
   useEffect(() => {
     const unsubscribe = subscribeToMessages(roomId, (newMessages) => {
-      setLocalMessages(newMessages);
-      setMessages(newMessages);
+      if (isDemoMode) {
+        const localMsgs = demoMessagesLocal.get(roomId) || [];
+        const merged = [...newMessages];
+        for (const localMsg of localMsgs) {
+          if (!merged.find((m) => m.messageId === localMsg.messageId)) {
+            merged.push(localMsg);
+          }
+        }
+        merged.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        setLocalMessages(merged);
+        setMessages(merged);
+      } else {
+        setLocalMessages(newMessages);
+        setMessages(newMessages);
+      }
     });
 
     return () => unsubscribe();
@@ -95,6 +160,24 @@ export const OneOnOneRoomScreen: React.FC = () => {
 
     return () => unsubscribe();
   }, [sessionId, navigation]);
+
+  // タイマー終了時に共同ルームに遷移
+  useEffect(() => {
+    if (remainingTime <= 0 && isDemoMode) {
+      // セッションを共同ルームフェーズに更新
+      updateDemoSession(sessionId, { phase: 'COMMON' });
+
+      // 少し待ってから共同ルームに遷移
+      const timer = setTimeout(() => {
+        navigation.replace('CommonRoom', {
+          sessionId,
+          roomId: `${sessionId}_common`,
+        });
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [remainingTime, sessionId, navigation]);
 
   // タイマー
   useEffect(() => {
@@ -121,15 +204,24 @@ export const OneOnOneRoomScreen: React.FC = () => {
       await sendMessage(roomId, user.userId, text);
     } catch (error: any) {
       if (error.message === 'Rate limit exceeded') {
-        Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        if (Platform.OS === 'web') {
+          window.alert('送信制限\nメッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        } else {
+          Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        }
       } else {
-        Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        if (Platform.OS === 'web') {
+          window.alert('エラー\nメッセージの送信に失敗しました');
+        } else {
+          Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        }
       }
     }
   }, [roomId, user]);
 
   const handleMessageLongPress = (message: Message) => {
     if (message.senderUserId === user?.userId) return;
+    if (isAIPartner(message.senderUserId)) return; // AI相手は通報不可
     setSelectedMessage(message);
     setShowReportModal(true);
   };
@@ -145,9 +237,17 @@ export const OneOnOneRoomScreen: React.FC = () => {
         partnerUserId,
         reason
       );
-      Alert.alert('報告完了', '通報を受け付けました。ご報告ありがとうございます。');
+      if (Platform.OS === 'web') {
+        window.alert('報告完了\n通報を受け付けました。ご報告ありがとうございます。');
+      } else {
+        Alert.alert('報告完了', '通報を受け付けました。ご報告ありがとうございます。');
+      }
     } catch (error) {
-      Alert.alert('エラー', '通報の送信に失敗しました');
+      if (Platform.OS === 'web') {
+        window.alert('エラー\n通報の送信に失敗しました');
+      } else {
+        Alert.alert('エラー', '通報の送信に失敗しました');
+      }
     }
 
     setShowReportModal(false);
@@ -157,41 +257,59 @@ export const OneOnOneRoomScreen: React.FC = () => {
   const handleBlock = async () => {
     if (!user || !partnerUserId) return;
 
-    Alert.alert(
-      'ブロックしますか？',
-      'この相手とは今後マッチングされなくなります。',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: 'ブロック',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await blockUser(user.userId, partnerUserId);
-              Alert.alert('ブロック完了', 'この相手をブロックしました。');
-            } catch (error) {
-              Alert.alert('エラー', 'ブロックに失敗しました');
-            }
+    const confirmBlock = async () => {
+      try {
+        await blockUser(user.userId, partnerUserId);
+        if (Platform.OS === 'web') {
+          window.alert('ブロック完了\nこの相手をブロックしました。');
+        } else {
+          Alert.alert('ブロック完了', 'この相手をブロックしました。');
+        }
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('エラー\nブロックに失敗しました');
+        } else {
+          Alert.alert('エラー', 'ブロックに失敗しました');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('ブロックしますか？\nこの相手とは今後マッチングされなくなります。')) {
+        confirmBlock();
+      }
+    } else {
+      Alert.alert(
+        'ブロックしますか？',
+        'この相手とは今後マッチングされなくなります。',
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          {
+            text: 'ブロック',
+            style: 'destructive',
+            onPress: confirmBlock,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
 
     setShowReportModal(false);
     setSelectedMessage(null);
+  };
+
+  const getSenderName = (senderId: string): string | undefined => {
+    if (senderId === user?.userId) return undefined;
+    if (isAIPartner(senderId)) {
+      return isTeacher ? '学習者（AI）' : '先生（AI）';
+    }
+    return isTeacher ? '学習者' : '教える人';
   };
 
   const renderMessage = ({ item }: { item: Message }) => (
     <ChatMessage
       message={item}
       isOwnMessage={item.senderUserId === user?.userId}
-      senderName={
-        item.senderUserId === user?.userId
-          ? undefined
-          : isTeacher
-          ? '学習者'
-          : '教える人'
-      }
+      senderName={getSenderName(item.senderUserId)}
       onLongPress={() => handleMessageLongPress(item)}
     />
   );
@@ -211,12 +329,16 @@ export const OneOnOneRoomScreen: React.FC = () => {
               </Text>
             </View>
             <Text style={styles.roleDescription}>
-              {isTeacher
+              {isAIMatch
+                ? isTeacher
+                  ? 'AI学習者に問題の解き方を教えてあげましょう'
+                  : 'AI先生から教えてもらいましょう'
+                : isTeacher
                 ? '相手に問題の解き方を教えてあげましょう'
                 : '正解した人から教えてもらいましょう'}
             </Text>
           </View>
-          <Timer remainingTime={remainingTime} label="残り" />
+          <Timer remainingTime={remainingTime} label={remainingTime > 0 ? '残り' : '終了'} />
         </View>
 
         {currentQuiz && (

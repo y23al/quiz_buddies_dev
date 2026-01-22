@@ -20,13 +20,22 @@ import {
   joinRoom,
   getRoom,
   subscribeToParticipation,
+  getParticipation,
+  findOrCreateMatch,
+  generateAIMessage,
+  AI_USER_ID,
+  updateDemoSession,
 } from '../../services';
+import { isDemoMode } from '../../config/firebase';
 import { RootStackParamList, Message, CONFIG } from '../../types';
 import { Timer, ChatMessage, ChatInput, LoadingScreen } from '../../components';
 import { calculateRemainingTime } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type GroupRoomRouteProp = RouteProp<RootStackParamList, 'GroupRoom'>;
+
+// デモ用メッセージストレージ（roomServiceと共有するため）
+const demoMessagesLocal: Map<string, Message[]> = new Map();
 
 export const GroupRoomScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -38,8 +47,10 @@ export const GroupRoomScreen: React.FC = () => {
   const [messages, setLocalMessages] = useState<Message[]>([]);
   const [remainingTime, setRemainingTime] = useState(CONFIG.GROUP_ROOM_SECONDS);
   const [isLoading, setIsLoading] = useState(true);
+  const [matchingStarted, setMatchingStarted] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ルームに参加
   useEffect(() => {
@@ -66,11 +77,61 @@ export const GroupRoomScreen: React.FC = () => {
     joinAndSetup();
   }, [roomId, user]);
 
+  // AI自動メッセージを定期的に送信
+  useEffect(() => {
+    if (!isDemoMode || isLoading) return;
+
+    const sendAIMessage = () => {
+      const aiMessage = generateAIMessage(
+        roomId,
+        roomType === 'correct' ? 'correct' : 'incorrect'
+      );
+
+      // ローカルメッセージに追加
+      setLocalMessages((prev) => {
+        const newMessages = [...prev, aiMessage];
+        demoMessagesLocal.set(roomId, newMessages);
+        return newMessages;
+      });
+    };
+
+    // 最初のAIメッセージを2秒後に送信
+    const initialTimer = setTimeout(sendAIMessage, 2000);
+
+    // その後、8-15秒ごとにランダムでAIメッセージを送信
+    aiMessageTimerRef.current = setInterval(() => {
+      if (Math.random() > 0.5) {
+        sendAIMessage();
+      }
+    }, 8000 + Math.random() * 7000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (aiMessageTimerRef.current) {
+        clearInterval(aiMessageTimerRef.current);
+      }
+    };
+  }, [isDemoMode, isLoading, roomId, roomType]);
+
   // メッセージをリアルタイム購読
   useEffect(() => {
     const unsubscribe = subscribeToMessages(roomId, (newMessages) => {
-      setLocalMessages(newMessages);
-      setMessages(newMessages);
+      // デモモードではローカルメッセージとマージ
+      if (isDemoMode) {
+        const localMsgs = demoMessagesLocal.get(roomId) || [];
+        const merged = [...newMessages];
+        for (const localMsg of localMsgs) {
+          if (!merged.find((m) => m.messageId === localMsg.messageId)) {
+            merged.push(localMsg);
+          }
+        }
+        merged.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        setLocalMessages(merged);
+        setMessages(merged);
+      } else {
+        setLocalMessages(newMessages);
+        setMessages(newMessages);
+      }
     });
 
     return () => unsubscribe();
@@ -109,6 +170,41 @@ export const GroupRoomScreen: React.FC = () => {
     return () => unsubscribe();
   }, [sessionId, navigation]);
 
+  // タイマー終了時にマッチングを開始
+  useEffect(() => {
+    if (remainingTime <= 0 && !matchingStarted && user && isDemoMode) {
+      setMatchingStarted(true);
+
+      const startMatching = async () => {
+        try {
+          // 参加情報を取得
+          const participation = await getParticipation(sessionId, user.userId);
+          if (!participation?.result) return;
+
+          // マッチング相手を見つける（またはAIを作成）
+          const match = await findOrCreateMatch(sessionId, user.userId, participation.result);
+
+          console.log('Match found:', match);
+
+          // セッションをマッチングフェーズに更新
+          updateDemoSession(sessionId, { phase: 'MATCHING' });
+
+          // 少し待ってから1on1ルームに遷移
+          setTimeout(() => {
+            navigation.replace('OneOnOneRoom', {
+              sessionId,
+              roomId: match.roomId,
+            });
+          }, 1500);
+        } catch (error) {
+          console.error('Matching error:', error);
+        }
+      };
+
+      startMatching();
+    }
+  }, [remainingTime, matchingStarted, user, sessionId, navigation]);
+
   // タイマー
   useEffect(() => {
     timerRef.current = setInterval(() => {
@@ -135,9 +231,17 @@ export const GroupRoomScreen: React.FC = () => {
       await sendMessage(roomId, user.userId, text);
     } catch (error: any) {
       if (error.message === 'Rate limit exceeded') {
-        Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        if (Platform.OS === 'web') {
+          window.alert('送信制限\nメッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        } else {
+          Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        }
       } else {
-        Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        if (Platform.OS === 'web') {
+          window.alert('エラー\nメッセージの送信に失敗しました');
+        } else {
+          Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        }
       }
     }
   }, [roomId, user]);
@@ -146,7 +250,13 @@ export const GroupRoomScreen: React.FC = () => {
     <ChatMessage
       message={item}
       isOwnMessage={item.senderUserId === user?.userId}
-      senderName={item.senderUserId === user?.userId ? undefined : '参加者'}
+      senderName={
+        item.senderUserId === user?.userId
+          ? undefined
+          : item.senderUserId === AI_USER_ID
+          ? 'クイズBot'
+          : '参加者'
+      }
     />
   );
 
@@ -164,11 +274,13 @@ export const GroupRoomScreen: React.FC = () => {
             {isCorrectRoom ? '正解者ルーム' : '不正解者ルーム'}
           </Text>
         </View>
-        <Timer remainingTime={remainingTime} label="残り時間" />
+        <Timer remainingTime={remainingTime} label={remainingTime > 0 ? '残り時間' : 'マッチング中...'} />
         <Text style={styles.headerDescription}>
-          {isCorrectRoom
-            ? 'おめでとうございます！正解者同士で交流しましょう'
-            : 'ドンマイ！同じ仲間と励まし合いましょう'}
+          {remainingTime > 0
+            ? isCorrectRoom
+              ? 'おめでとうございます！正解者同士で交流しましょう'
+              : 'ドンマイ！同じ仲間と励まし合いましょう'
+            : '1on1マッチングを行っています...'}
         </Text>
       </View>
 

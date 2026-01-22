@@ -7,7 +7,12 @@
       "Bash(npx expo start --web)",
       "Bash(start chrome http://localhost:8081)",
       "Bash(git remote add:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: Quiz Buddies app\n\n- React Native \\(Expo\\) + TypeScript frontend\n- Firebase Authentication \\(anonymous login\\)\n- Firestore for real-time data storage\n- Cloud Functions for session management\n- Demo mode for offline testing\n- Features: Quiz sessions, group rooms, 1-on-1 matching, common room\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd AI auto-messaging and matching features\n\n- Add aiService for AI message generation and AI partner creation\n- Implement auto-matching when group room timer ends\n- Add AI messages to all rooms \\(group, 1on1, common\\)\n- Create AI partner when no human match is available\n- Support AI-based 1on1 chat when partner is unavailable\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

@@ -23,13 +23,20 @@ import {
   getRoom,
   joinRoom,
   reportMessage,
+  generateAIMessage,
+  AI_USER_ID,
+  isAIPartner,
 } from '../../services';
-import { RootStackParamList, Message, CONFIG, Session, Quiz } from '../../types';
+import { isDemoMode } from '../../config/firebase';
+import { RootStackParamList, Message, CONFIG } from '../../types';
 import { Timer, ChatMessage, ChatInput, LoadingScreen } from '../../components';
 import { calculateRemainingTime } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type CommonRoomRouteProp = RouteProp<RootStackParamList, 'CommonRoom'>;
+
+// デモ用メッセージストレージ
+const demoMessagesLocal: Map<string, Message[]> = new Map();
 
 export const CommonRoomScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -47,6 +54,7 @@ export const CommonRoomScreen: React.FC = () => {
 
   const flatListRef = useRef<FlatList>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiMessageTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ルームに参加
   useEffect(() => {
@@ -72,11 +80,56 @@ export const CommonRoomScreen: React.FC = () => {
     setup();
   }, [roomId, user]);
 
+  // AI自動メッセージを定期的に送信
+  useEffect(() => {
+    if (!isDemoMode || isLoading || sessionEnded) return;
+
+    const sendAIMessage = () => {
+      const aiMessage = generateAIMessage(roomId, 'common');
+
+      setLocalMessages((prev) => {
+        const newMessages = [...prev, aiMessage];
+        demoMessagesLocal.set(roomId, newMessages);
+        return newMessages;
+      });
+    };
+
+    // 最初のAIメッセージを3秒後に送信
+    const initialTimer = setTimeout(sendAIMessage, 3000);
+
+    // その後、10-20秒ごとにランダムでAIメッセージを送信
+    aiMessageTimerRef.current = setInterval(() => {
+      if (Math.random() > 0.5 && !sessionEnded) {
+        sendAIMessage();
+      }
+    }, 10000 + Math.random() * 10000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (aiMessageTimerRef.current) {
+        clearInterval(aiMessageTimerRef.current);
+      }
+    };
+  }, [isDemoMode, isLoading, roomId, sessionEnded]);
+
   // メッセージをリアルタイム購読
   useEffect(() => {
     const unsubscribe = subscribeToMessages(roomId, (newMessages) => {
-      setLocalMessages(newMessages);
-      setMessages(newMessages);
+      if (isDemoMode) {
+        const localMsgs = demoMessagesLocal.get(roomId) || [];
+        const merged = [...newMessages];
+        for (const localMsg of localMsgs) {
+          if (!merged.find((m) => m.messageId === localMsg.messageId)) {
+            merged.push(localMsg);
+          }
+        }
+        merged.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        setLocalMessages(merged);
+        setMessages(merged);
+      } else {
+        setLocalMessages(newMessages);
+        setMessages(newMessages);
+      }
     });
 
     return () => unsubscribe();
@@ -121,15 +174,24 @@ export const CommonRoomScreen: React.FC = () => {
       await sendMessage(roomId, user.userId, text);
     } catch (error: any) {
       if (error.message === 'Rate limit exceeded') {
-        Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        if (Platform.OS === 'web') {
+          window.alert('送信制限\nメッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        } else {
+          Alert.alert('送信制限', 'メッセージの送信が速すぎます。少し待ってから再度お試しください。');
+        }
       } else {
-        Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        if (Platform.OS === 'web') {
+          window.alert('エラー\nメッセージの送信に失敗しました');
+        } else {
+          Alert.alert('エラー', 'メッセージの送信に失敗しました');
+        }
       }
     }
   }, [roomId, user]);
 
   const handleMessageLongPress = (message: Message) => {
     if (message.senderUserId === user?.userId) return;
+    if (isAIPartner(message.senderUserId) || message.senderUserId === AI_USER_ID) return;
     setSelectedMessage(message);
     setShowReportModal(true);
   };
@@ -145,9 +207,17 @@ export const CommonRoomScreen: React.FC = () => {
         selectedMessage.senderUserId,
         reason
       );
-      Alert.alert('報告完了', '通報を受け付けました。ご報告ありがとうございます。');
+      if (Platform.OS === 'web') {
+        window.alert('報告完了\n通報を受け付けました。ご報告ありがとうございます。');
+      } else {
+        Alert.alert('報告完了', '通報を受け付けました。ご報告ありがとうございます。');
+      }
     } catch (error) {
-      Alert.alert('エラー', '通報の送信に失敗しました');
+      if (Platform.OS === 'web') {
+        window.alert('エラー\n通報の送信に失敗しました');
+      } else {
+        Alert.alert('エラー', '通報の送信に失敗しました');
+      }
     }
 
     setShowReportModal(false);
@@ -162,11 +232,18 @@ export const CommonRoomScreen: React.FC = () => {
     });
   };
 
+  const getSenderName = (senderId: string): string | undefined => {
+    if (senderId === user?.userId) return undefined;
+    if (senderId === AI_USER_ID) return 'クイズBot';
+    if (isAIPartner(senderId)) return '参加者（AI）';
+    return '参加者';
+  };
+
   const renderMessage = ({ item }: { item: Message }) => (
     <ChatMessage
       message={item}
       isOwnMessage={item.senderUserId === user?.userId}
-      senderName={item.senderUserId === user?.userId ? undefined : '参加者'}
+      senderName={getSenderName(item.senderUserId)}
       onLongPress={() => handleMessageLongPress(item)}
     />
   );

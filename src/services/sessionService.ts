@@ -490,3 +490,99 @@ export const updateDemoSession = (sessionId: string, updates: Partial<Session>) 
     Object.assign(session, updates);
   }
 };
+
+// デモモード用: 参加情報を更新
+export const updateDemoParticipation = (
+  sessionId: string,
+  userId: string,
+  updates: Partial<Participation>
+) => {
+  const participationId = `${sessionId}_${userId}`;
+  const participation = demoParticipations.get(participationId);
+  if (participation) {
+    Object.assign(participation, updates);
+  }
+};
+
+// デモモード用: セッションの全参加者を取得
+export const getDemoParticipants = (sessionId: string): Participation[] => {
+  const participants: Participation[] = [];
+  for (const [key, participation] of demoParticipations.entries()) {
+    if (key.startsWith(sessionId)) {
+      participants.push(participation);
+    }
+  }
+  return participants;
+};
+
+// デモモード用: マッチング相手を見つける（または作成する）
+export const findOrCreateMatch = async (
+  sessionId: string,
+  userId: string,
+  userResult: AnswerResult
+): Promise<{ partnerId: string; roomId: string; isAI: boolean }> => {
+  const participationId = `${sessionId}_${userId}`;
+  const participation = demoParticipations.get(participationId);
+
+  if (participation?.oneOnOneRoomId) {
+    // 既にマッチング済み
+    return {
+      partnerId: '',
+      roomId: participation.oneOnOneRoomId,
+      isAI: false,
+    };
+  }
+
+  // 相手を探す（正解者は不正解者と、不正解者は正解者とマッチング）
+  const targetResult: AnswerResult = userResult === 'CORRECT' ? 'INCORRECT' : 'CORRECT';
+
+  for (const [key, p] of demoParticipations.entries()) {
+    if (!key.startsWith(sessionId)) continue;
+    if (p.userId === userId) continue;
+    if (p.result !== targetResult) continue;
+    if (p.oneOnOneRoomId) continue; // 既にマッチング済みはスキップ
+
+    // マッチング成功
+    const roomId = `${sessionId}_1on1_${uuidv4().slice(0, 8)}`;
+
+    // 両者の参加情報を更新
+    if (participation) {
+      participation.oneOnOneRoomId = roomId;
+    }
+    p.oneOnOneRoomId = roomId;
+
+    return {
+      partnerId: p.userId,
+      roomId,
+      isAI: false,
+    };
+  }
+
+  // 相手が見つからない場合はAIとマッチング
+  const { createAIPartner } = await import('./aiService');
+  const aiPartner = createAIPartner(userResult !== 'CORRECT');
+  const roomId = `${sessionId}_1on1_ai_${uuidv4().slice(0, 8)}`;
+
+  // AI参加者を作成
+  const aiParticipationId = `${sessionId}_${aiPartner.userId}`;
+  const aiParticipation: Participation = {
+    sessionId,
+    userId: aiPartner.userId,
+    joinedAt: new Date(),
+    result: targetResult,
+    splitRoomAssigned: targetResult === 'CORRECT' ? 'correct' : 'incorrect',
+    oneOnOneRoomId: roomId,
+  };
+  demoParticipations.set(aiParticipationId, aiParticipation);
+
+  // ユーザーの参加情報を更新
+  if (participation) {
+    participation.oneOnOneRoomId = roomId;
+  }
+
+  return {
+    partnerId: aiPartner.userId,
+    roomId,
+    isAI: true,
+  };
+};

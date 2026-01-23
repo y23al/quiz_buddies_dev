@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-expo-app:*)",
+      "Bash(npm run web:*)",
+      "Bash(npx expo install:*)",
+      "Bash(npx expo start --web)",
+      "Bash(start chrome http://localhost:8081)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

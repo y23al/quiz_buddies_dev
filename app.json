@@ -26,7 +26,10 @@
       "package": "com.quizbuddies.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "baseUrl": "/quiz_buddies_dev"
     },
     "plugins": [
       [

@@ -15,10 +15,28 @@ class ChatMessageWidget extends StatelessWidget {
     this.senderName,
   });
 
+  // senderUserIdからアバター色を決定的に生成
+  Color _avatarColor(String userId) {
+    final colors = [
+      Colors.blue,
+      Colors.teal,
+      Colors.orange,
+      Colors.indigo,
+      Colors.pink,
+      Colors.cyan,
+      Colors.deepPurple,
+      Colors.amber,
+      Colors.brown,
+      Colors.green,
+    ];
+    return colors[userId.hashCode.abs() % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isAI = AiService.isAIPartner(message.senderUserId);
-    final displayName = senderName ?? (isAI ? 'AI' : '参加者');
+    final displayName = senderName ??
+        AiService.getParticipantName(message.senderUserId) ??
+        '参加者';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -28,18 +46,16 @@ class ChatMessageWidget extends StatelessWidget {
         children: [
           if (!isMe) ...[
             CircleAvatar(
-              backgroundColor: isAI ? Colors.purple : Colors.grey[400],
+              backgroundColor: _avatarColor(message.senderUserId),
               radius: 16,
-              child: isAI
-                  ? const Icon(Icons.smart_toy, color: Colors.white, size: 18)
-                  : Text(
-                      displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              child: Text(
+                displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -51,39 +67,13 @@ class ChatMessageWidget extends StatelessWidget {
                 if (!isMe)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          displayName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        if (isAI) ...[
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.purple[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'AI',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.purple,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      displayName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 Container(
@@ -92,11 +82,7 @@ class ChatMessageWidget extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: isMe
-                        ? const Color(0xFF4CAF50)
-                        : isAI
-                            ? Colors.purple[50]
-                            : Colors.white,
+                    color: isMe ? const Color(0xFF4CAF50) : Colors.white,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),

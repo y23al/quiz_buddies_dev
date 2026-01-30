@@ -87,7 +87,7 @@ class HomeScreen extends ConsumerWidget {
                 _buildNoSessionCard(context, ref),
               ],
 
-              const Spacer(),
+              const Expanded(child: SizedBox()),
 
               // 開発用ボタン
               Card(

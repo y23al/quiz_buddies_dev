@@ -24,7 +24,7 @@ class HomeScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () {
-              // TODO: 設定画面へ
+              Navigator.pushNamed(context, '/settings');
             },
           ),
         ],

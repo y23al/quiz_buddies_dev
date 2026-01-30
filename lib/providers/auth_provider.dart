@@ -55,6 +55,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  void updateDisplayName(String name) {
+    if (state.user != null) {
+      final updated = state.user!.copyWith(displayName: name);
+      state = state.copyWith(user: updated);
+    }
+  }
+
   Future<void> signOut() async {
     await _authService.signOut();
     state = AuthState(isLoading: false, isAuthenticated: false);

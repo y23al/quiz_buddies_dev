@@ -102,6 +102,11 @@ class QuizBuddiesApp extends StatelessWidget {
           ),
         );
 
+      case '/settings':
+        return MaterialPageRoute(
+          builder: (_) => const SettingsScreen(),
+        );
+
       default:
         return MaterialPageRoute(
           builder: (_) => const AuthScreen(),

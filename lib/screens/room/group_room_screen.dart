@@ -64,19 +64,24 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
 
   void _scheduleNextAIMessage() {
     final delay = 5 + (DateTime.now().millisecondsSinceEpoch % 10);
-    _aiMessageTimer = Timer(Duration(seconds: delay), () {
+    _aiMessageTimer = Timer(Duration(seconds: delay), () async {
       if (mounted) {
         final roomType = widget.isCorrect ? 'correct' : 'incorrect';
-        final aiMessage = AiService.generateAIMessage(
+        final quiz = ref.read(sessionProvider).currentQuiz;
+        final aiMessage = await AiService.generateAIMessageAsync(
           'group_${widget.sessionId}_$roomType',
           roomType,
           isCorrectUser: widget.isCorrect,
+          chatHistory: _messages,
+          quiz: quiz,
         );
-        setState(() {
-          _messages.add(aiMessage);
-        });
-        _scrollToBottom();
-        _scheduleNextAIMessage();
+        if (mounted) {
+          setState(() {
+            _messages.add(aiMessage);
+          });
+          _scrollToBottom();
+          _scheduleNextAIMessage();
+        }
       }
     });
   }
@@ -199,10 +204,13 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
               itemBuilder: (context, index) {
                 final message = _messages[index];
                 final isMe = message.senderUserId == authState.user?.userId;
+                final senderName = isMe
+                    ? authState.user?.displayName
+                    : AiService.getParticipantName(message.senderUserId);
                 return ChatMessageWidget(
                   message: message,
                   isMe: isMe,
-                  senderName: isMe ? authState.user?.displayName : null,
+                  senderName: senderName,
                 );
               },
             ),

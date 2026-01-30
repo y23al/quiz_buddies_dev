@@ -84,18 +84,23 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
 
   void _scheduleNextAIMessage() {
     final delay = 8 + (DateTime.now().millisecondsSinceEpoch % 12);
-    _aiMessageTimer = Timer(Duration(seconds: delay), () {
+    _aiMessageTimer = Timer(Duration(seconds: delay), () async {
       if (mounted) {
-        final aiMessage = AiService.generateAIMessage(
+        final quiz = ref.read(sessionProvider).currentQuiz;
+        final aiMessage = await AiService.generateAIMessageAsync(
           'oneOnOne_${widget.sessionId}',
           'one_on_one',
-          isCorrectUser: !widget.isCorrect, // パートナーは逆サイド
+          isCorrectUser: !widget.isCorrect,
+          chatHistory: _messages,
+          quiz: quiz,
         );
-        setState(() {
-          _messages.add(aiMessage);
-        });
-        _scrollToBottom();
-        _scheduleNextAIMessage();
+        if (mounted) {
+          setState(() {
+            _messages.add(aiMessage);
+          });
+          _scrollToBottom();
+          _scheduleNextAIMessage();
+        }
       }
     });
   }
@@ -147,17 +152,22 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
   }
 
   void _scheduleAIReply() {
-    Timer(const Duration(seconds: 2), () {
+    Timer(const Duration(seconds: 1), () async {
       if (mounted) {
-        final aiMessage = AiService.generateAIMessage(
+        final quiz = ref.read(sessionProvider).currentQuiz;
+        final aiMessage = await AiService.generateAIMessageAsync(
           'oneOnOne_${widget.sessionId}',
           'one_on_one',
           isCorrectUser: !widget.isCorrect,
+          chatHistory: _messages,
+          quiz: quiz,
         );
-        setState(() {
-          _messages.add(aiMessage);
-        });
-        _scrollToBottom();
+        if (mounted) {
+          setState(() {
+            _messages.add(aiMessage);
+          });
+          _scrollToBottom();
+        }
       }
     });
   }

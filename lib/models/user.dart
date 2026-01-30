@@ -21,6 +21,18 @@ class AppUser {
     );
   }
 
+  AppUser copyWith({
+    String? displayName,
+    List<String>? blockedUserIds,
+  }) {
+    return AppUser(
+      userId: userId,
+      displayName: displayName ?? this.displayName,
+      createdAt: createdAt,
+      blockedUserIds: blockedUserIds ?? this.blockedUserIds,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,

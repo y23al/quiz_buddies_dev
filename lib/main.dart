@@ -1,10 +1,23 @@
 // Quiz Buddies - メインエントリーポイント
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'screens/screens.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: 'AIzaSyByY7rvnzRdp3eqD8vOoHxyTWfFP9rlOWA',
+      authDomain: 'quiz-buddies-3a96c.firebaseapp.com',
+      databaseURL: 'https://quiz-buddies-3a96c-default-rtdb.asia-southeast1.firebasedatabase.app',
+      projectId: 'quiz-buddies-3a96c',
+      storageBucket: 'quiz-buddies-3a96c.firebasestorage.app',
+      messagingSenderId: '570689950826',
+      appId: '1:570689950826:web:e1284ebf9176fc5fe32613',
+      measurementId: 'G-Q851WNPVM8',
+    ),
+  );
   runApp(const ProviderScope(child: QuizBuddiesApp()));
 }
 
@@ -62,6 +75,7 @@ class QuizBuddiesApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => QuizScreen(
             sessionId: args['sessionId'] as String,
+            sharedSession: args['sharedSession'] as Map<String, dynamic>?,
           ),
         );
 

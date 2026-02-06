@@ -1,4 +1,5 @@
 // グループルーム画面（正解者/不正解者ルーム）
+// 人間 + AI が参加
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,21 +27,48 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
   Timer? _timer;
   Timer? _aiMessageTimer;
   int _remainingSeconds = AppConfig.groupRoomSeconds;
-  final List<Message> _messages = [];
+  List<Message> _messages = [];
   final ScrollController _scrollController = ScrollController();
+  final FirebaseRoomService _firebaseService = FirebaseRoomService();
+  StreamSubscription<List<Message>>? _messageSubscription;
+  String get _roomId => 'group_${widget.sessionId}_${widget.isCorrect ? "correct" : "incorrect"}';
 
   @override
   void initState() {
     super.initState();
+    _joinRoom();
     _startTimer();
     _startAIMessages();
+  }
+
+  void _joinRoom() {
+    final authState = ref.read(authProvider);
+    if (authState.user == null) return;
+
+    // Firebaseルームに参加
+    _firebaseService.joinRoom(_roomId, authState.user!.userId, authState.user!.displayName);
+
+    // メッセージをリアルタイムで監視
+    _messageSubscription = _firebaseService.watchMessages(_roomId).listen((messages) {
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+        });
+        _scrollToBottom();
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _aiMessageTimer?.cancel();
+    _messageSubscription?.cancel();
     _scrollController.dispose();
+    final authState = ref.read(authProvider);
+    if (authState.user != null) {
+      _firebaseService.leaveRoom(_roomId, authState.user!.userId);
+    }
     super.dispose();
   }
 
@@ -58,7 +86,6 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
   }
 
   void _startAIMessages() {
-    // 5-15秒ごとにAIメッセージを追加
     _scheduleNextAIMessage();
   }
 
@@ -69,17 +96,20 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
         final roomType = widget.isCorrect ? 'correct' : 'incorrect';
         final quiz = ref.read(sessionProvider).currentQuiz;
         final aiMessage = await AiService.generateAIMessageAsync(
-          'group_${widget.sessionId}_$roomType',
+          _roomId,
           roomType,
           isCorrectUser: widget.isCorrect,
           chatHistory: _messages,
           quiz: quiz,
         );
         if (mounted) {
-          setState(() {
-            _messages.add(aiMessage);
-          });
-          _scrollToBottom();
+          // AIメッセージをFirebaseに送信
+          await _firebaseService.sendMessage(
+            _roomId,
+            aiMessage.senderUserId,
+            aiMessage.text ?? '',
+            displayName: AiService.getParticipantName(aiMessage.senderUserId),
+          );
           _scheduleNextAIMessage();
         }
       }
@@ -99,7 +129,6 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
   }
 
   Future<void> _startMatching() async {
-    // マッチング開始
     final authState = ref.read(authProvider);
     if (authState.user == null) return;
 
@@ -121,23 +150,17 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
     }
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text) async {
     final authState = ref.read(authProvider);
     if (authState.user == null) return;
 
-    final message = Message(
-      messageId: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      roomId: 'group_${widget.sessionId}_${widget.isCorrect ? "correct" : "incorrect"}',
-      senderUserId: authState.user!.userId,
-      type: MessageType.text,
-      text: text,
-      createdAt: DateTime.now(),
+    // Firebaseにメッセージを送信
+    await _firebaseService.sendMessage(
+      _roomId,
+      authState.user!.userId,
+      text,
+      displayName: authState.user!.displayName,
     );
-
-    setState(() {
-      _messages.add(message);
-    });
-    _scrollToBottom();
   }
 
   @override
@@ -158,7 +181,7 @@ class _GroupRoomScreenState extends ConsumerState<GroupRoomScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(

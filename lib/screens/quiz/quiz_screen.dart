@@ -4,11 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
+import '../../services/services.dart';
 
 class QuizScreen extends ConsumerStatefulWidget {
   final String sessionId;
+  final Map<String, dynamic>? sharedSession;
 
-  const QuizScreen({super.key, required this.sessionId});
+  const QuizScreen({
+    super.key,
+    required this.sessionId,
+    this.sharedSession,
+  });
 
   @override
   ConsumerState<QuizScreen> createState() => _QuizScreenState();
@@ -19,11 +25,33 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   int _remainingSeconds = AppConfig.quizTimeSeconds;
   int? _selectedAnswer;
   bool _hasSubmitted = false;
+  Quiz? _sharedQuiz;
+  final FirebaseSessionService _sessionService = FirebaseSessionService();
 
   @override
   void initState() {
     super.initState();
+    _loadSharedQuiz();
     _startTimer();
+  }
+
+  void _loadSharedQuiz() {
+    // Firebaseから共有されたクイズデータを使用
+    if (widget.sharedSession != null) {
+      final session = widget.sharedSession!;
+      _sharedQuiz = Quiz(
+        quizId: session['quizId'] as String? ?? '',
+        questionText: session['questionText'] as String? ?? '',
+        choices: List<String>.from(session['choices'] as List? ?? []),
+        correctChoiceIndex: session['correctChoiceIndex'] as int? ?? 0,
+        explanation: session['explanation'] as String? ?? '',
+        difficulty: session['difficulty'] as String? ?? 'normal',
+      );
+      // ローカルのセッション状態にも設定
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(sessionProvider.notifier).setQuiz(_sharedQuiz!);
+      });
+    }
   }
 
   @override
@@ -55,10 +83,23 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     });
     _timer?.cancel();
 
+    // 共有クイズまたはローカルクイズから正解を取得
+    final quiz = _sharedQuiz ?? ref.read(sessionProvider).currentQuiz;
     final isCorrect = _selectedAnswer != null &&
-        ref.read(sessionProvider).currentQuiz?.correctChoiceIndex == _selectedAnswer;
+        quiz?.correctChoiceIndex == _selectedAnswer;
 
     await ref.read(sessionProvider.notifier).submitAnswer(isCorrect);
+
+    // Firebaseにも回答を送信
+    final authState = ref.read(authProvider);
+    if (authState.user != null) {
+      await _sessionService.submitAnswer(
+        widget.sessionId,
+        authState.user!.userId,
+        _selectedAnswer ?? -1,
+        isCorrect,
+      );
+    }
 
     if (mounted) {
       Navigator.pushReplacementNamed(
@@ -75,7 +116,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionState = ref.watch(sessionProvider);
-    final quiz = sessionState.currentQuiz;
+    // 共有クイズを優先、なければローカルクイズを使用
+    final quiz = _sharedQuiz ?? sessionState.currentQuiz;
 
     if (quiz == null) {
       return const Scaffold(

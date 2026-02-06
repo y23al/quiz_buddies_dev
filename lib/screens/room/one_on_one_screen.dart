@@ -1,4 +1,5 @@
 // 1対1ルーム画面
+// 人間同士のみ（AIなし）
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,7 @@ class OneOnOneScreen extends ConsumerStatefulWidget {
   final String sessionId;
   final bool isCorrect;
   final String? partnerId;
-  final bool isAIPartner;
+  final bool isAIPartner; // 後方互換性のために残すが、常にfalse扱い
 
   const OneOnOneScreen({
     super.key,
@@ -28,40 +29,62 @@ class OneOnOneScreen extends ConsumerStatefulWidget {
 
 class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
   Timer? _timer;
-  Timer? _aiMessageTimer;
   int _remainingSeconds = AppConfig.oneOnOneSeconds;
-  final List<Message> _messages = [];
+  List<Message> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  late AppUser _partner;
+  final FirebaseRoomService _firebaseService = FirebaseRoomService();
+  StreamSubscription<List<Message>>? _messageSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _memberSubscription;
+  String? _partnerDisplayName;
+  String get _roomId => 'oneOnOne_${widget.sessionId}_${widget.partnerId ?? "waiting"}';
 
   @override
   void initState() {
     super.initState();
-    _initPartner();
+    _joinRoom();
     _startTimer();
-    if (widget.isAIPartner) {
-      _startAIMessages();
-    }
   }
 
-  void _initPartner() {
-    if (widget.isAIPartner || widget.partnerId == null) {
-      _partner = AiService.createAIPartner(!widget.isCorrect);
-    } else {
-      // 実際のパートナー情報を取得（デモでは仮のデータ）
-      _partner = AppUser(
-        userId: widget.partnerId!,
-        displayName: 'パートナー',
-        createdAt: DateTime.now(),
-      );
-    }
+  void _joinRoom() {
+    final authState = ref.read(authProvider);
+    if (authState.user == null) return;
+
+    // Firebaseルームに参加
+    _firebaseService.joinRoom(_roomId, authState.user!.userId, authState.user!.displayName);
+
+    // メッセージをリアルタイムで監視
+    _messageSubscription = _firebaseService.watchMessages(_roomId).listen((messages) {
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+        });
+        _scrollToBottom();
+      }
+    });
+
+    // メンバーを監視してパートナー名を取得
+    _memberSubscription = _firebaseService.watchMembers(_roomId).listen((members) {
+      if (mounted) {
+        final partner = members.where((m) => m['userId'] != authState.user!.userId).toList();
+        if (partner.isNotEmpty) {
+          setState(() {
+            _partnerDisplayName = partner.first['displayName'] as String?;
+          });
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _aiMessageTimer?.cancel();
+    _messageSubscription?.cancel();
+    _memberSubscription?.cancel();
     _scrollController.dispose();
+    final authState = ref.read(authProvider);
+    if (authState.user != null) {
+      _firebaseService.leaveRoom(_roomId, authState.user!.userId);
+    }
     super.dispose();
   }
 
@@ -74,33 +97,6 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
       } else {
         _timer?.cancel();
         _navigateToCommonRoom();
-      }
-    });
-  }
-
-  void _startAIMessages() {
-    _scheduleNextAIMessage();
-  }
-
-  void _scheduleNextAIMessage() {
-    final delay = 8 + (DateTime.now().millisecondsSinceEpoch % 12);
-    _aiMessageTimer = Timer(Duration(seconds: delay), () async {
-      if (mounted) {
-        final quiz = ref.read(sessionProvider).currentQuiz;
-        final aiMessage = await AiService.generateAIMessageAsync(
-          'oneOnOne_${widget.sessionId}',
-          'one_on_one',
-          isCorrectUser: !widget.isCorrect,
-          chatHistory: _messages,
-          quiz: quiz,
-        );
-        if (mounted) {
-          setState(() {
-            _messages.add(aiMessage);
-          });
-          _scrollToBottom();
-          _scheduleNextAIMessage();
-        }
       }
     });
   }
@@ -127,54 +123,23 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
     );
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text) async {
     final authState = ref.read(authProvider);
     if (authState.user == null) return;
 
-    final message = Message(
-      messageId: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      roomId: 'oneOnOne_${widget.sessionId}',
-      senderUserId: authState.user!.userId,
-      type: MessageType.text,
-      text: text,
-      createdAt: DateTime.now(),
+    // Firebaseにメッセージを送信
+    await _firebaseService.sendMessage(
+      _roomId,
+      authState.user!.userId,
+      text,
+      displayName: authState.user!.displayName,
     );
-
-    setState(() {
-      _messages.add(message);
-    });
-    _scrollToBottom();
-
-    // AIパートナーの場合、返信をシミュレート
-    if (widget.isAIPartner) {
-      _scheduleAIReply();
-    }
-  }
-
-  void _scheduleAIReply() {
-    Timer(const Duration(seconds: 1), () async {
-      if (mounted) {
-        final quiz = ref.read(sessionProvider).currentQuiz;
-        final aiMessage = await AiService.generateAIMessageAsync(
-          'oneOnOne_${widget.sessionId}',
-          'one_on_one',
-          isCorrectUser: !widget.isCorrect,
-          chatHistory: _messages,
-          quiz: quiz,
-        );
-        if (mounted) {
-          setState(() {
-            _messages.add(aiMessage);
-          });
-          _scrollToBottom();
-        }
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+    final partnerName = _partnerDisplayName ?? 'パートナー';
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -186,9 +151,7 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
               backgroundColor: Colors.white,
               radius: 16,
               child: Text(
-                _partner.displayName.isNotEmpty
-                    ? _partner.displayName.substring(0, 1)
-                    : '?',
+                partnerName.isNotEmpty ? partnerName.substring(0, 1) : '?',
                 style: const TextStyle(
                   color: Colors.blue,
                   fontWeight: FontWeight.bold,
@@ -201,16 +164,16 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _partner.displayName,
+                    partnerName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                     ),
                   ),
                   Text(
-                    widget.isAIPartner ? 'AIパートナー' : (!widget.isCorrect ? '正解者' : '不正解者'),
+                    !widget.isCorrect ? '正解者' : '不正解者',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 12,
                     ),
                   ),
@@ -225,7 +188,7 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -253,8 +216,8 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
             color: Colors.blue[50],
             child: Text(
               widget.isCorrect
-                  ? '${_partner.displayName}さんに教えてあげよう！'
-                  : '${_partner.displayName}さんに質問してみよう！',
+                  ? '$partnerNameさんに教えてあげよう！'
+                  : '$partnerNameさんに質問してみよう！',
               style: TextStyle(color: Colors.blue[700]),
               textAlign: TextAlign.center,
             ),
@@ -262,19 +225,54 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
 
           // チャットエリア
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                final isMe = message.senderUserId == authState.user?.userId;
-                return ChatMessageWidget(
-                  message: message,
-                  isMe: isMe,
-                  senderName: isMe ? authState.user?.displayName : _partner.displayName,
-                );
-              },
+            child: _messages.isEmpty
+                ? Center(
+                    child: Text(
+                      'パートナーを待っています...\nメッセージを送って会話を始めましょう！',
+                      style: TextStyle(color: Colors.grey[500]),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      final isMe = message.senderUserId == authState.user?.userId;
+                      return ChatMessageWidget(
+                        message: message,
+                        isMe: isMe,
+                        senderName: isMe ? authState.user?.displayName : partnerName,
+                      );
+                    },
+                  ),
+          ),
+
+          // 完了ボタン
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _goToHome,
+                icon: const Icon(Icons.check_circle, color: Colors.white),
+                label: const Text(
+                  '完了',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
             ),
           ),
 
@@ -282,6 +280,14 @@ class _OneOnOneScreenState extends ConsumerState<OneOnOneScreen> {
           ChatInputWidget(onSend: _sendMessage),
         ],
       ),
+    );
+  }
+
+  void _goToHome() {
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/home',
+      (route) => false,
     );
   }
 }

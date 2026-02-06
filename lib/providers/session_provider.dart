@@ -140,6 +140,11 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = state.copyWith(messages: messages);
   }
 
+  // クイズを設定（Firebase共有セッション用）
+  void setQuiz(Quiz quiz) {
+    state = state.copyWith(currentQuiz: quiz);
+  }
+
   // リセット
   void reset() {
     state = SessionState();

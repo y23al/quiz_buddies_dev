@@ -1,6 +1,7 @@
 // 画面エクスポート
 export 'auth/auth_screen.dart';
 export 'home/home_screen.dart';
+export 'lobby/lobby_screen.dart';
 export 'quiz/quiz_screen.dart';
 export 'quiz/result_screen.dart';
 export 'room/group_room_screen.dart';

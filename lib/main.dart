@@ -70,6 +70,15 @@ class QuizBuddiesApp extends StatelessWidget {
           builder: (_) => const HomeScreen(),
         );
 
+      case '/lobby':
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => LobbyScreen(
+            sessionId: args['sessionId'] as String,
+            sharedSession: args['sharedSession'] as Map<String, dynamic>,
+          ),
+        );
+
       case '/quiz':
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(

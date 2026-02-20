@@ -1,44 +1,30 @@
-// クイズ画面（10問対応・即判定）
+// 再試験画面（正解5問以下→同じ問題をポイント0で再出題）
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/models.dart';
-import '../../providers/providers.dart';
-import '../../services/services.dart';
 
-class QuizScreen extends ConsumerStatefulWidget {
+class RetestScreen extends StatefulWidget {
   final String sessionId;
-  final String? roomCode;
-  final int grade;
-  final int term;
-  final String subjectId;
+  final List<Map<String, dynamic>> questions;
   final String subjectName;
   final int lectureNo;
 
-  const QuizScreen({
+  const RetestScreen({
     super.key,
     required this.sessionId,
-    this.roomCode,
-    this.grade = 0,
-    this.term = 0,
-    this.subjectId = '',
-    this.subjectName = '',
-    this.lectureNo = 0,
+    required this.questions,
+    required this.subjectName,
+    required this.lectureNo,
   });
 
   @override
-  ConsumerState<QuizScreen> createState() => _QuizScreenState();
+  State<RetestScreen> createState() => _RetestScreenState();
 }
 
-class _QuizScreenState extends ConsumerState<QuizScreen> {
-  final CsvImportService _csvService = CsvImportService();
-  final FirebaseSessionService _sessionService = FirebaseSessionService();
-
-  List<Question> _questions = [];
+class _RetestScreenState extends State<RetestScreen> {
+  late List<Question> _questions;
   int _currentIndex = 0;
   int _correctCount = 0;
-  int _totalPoints = 0;
-  bool _isLoading = true;
   String? _selectedChoice;
   bool _isAnswered = false;
   bool _isCorrect = false;
@@ -48,35 +34,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   @override
   void initState() {
     super.initState();
-    _loadQuestions();
+    _questions = widget.questions.map((q) => Question.fromMap(q)).toList();
+    _startTimer();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _loadQuestions() async {
-    final questions = await _csvService.getQuestions(
-      widget.subjectId,
-      widget.lectureNo,
-    );
-
-    if (mounted) {
-      if (questions.length < AppConfig.quizQuestionCount) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('問題不足：${questions.length}問しかありません（10問必要）')),
-        );
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-        return;
-      }
-      setState(() {
-        _questions = questions;
-        _isLoading = false;
-      });
-      _startTimer();
-    }
   }
 
   void _startTimer() {
@@ -99,7 +64,6 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       _isAnswered = true;
       _isCorrect = false;
     });
-    _recordAnswer(null);
     _showResultAndNext();
   }
 
@@ -114,26 +78,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       _selectedChoice = choice;
       _isAnswered = true;
       _isCorrect = correct;
-      if (correct) {
-        _correctCount++;
-        _totalPoints += AppConfig.pointsPerCorrect;
-      }
+      if (correct) _correctCount++;
     });
 
-    _recordAnswer(choice);
     _showResultAndNext();
-  }
-
-  void _recordAnswer(String? choice) {
-    final authState = ref.read(authProvider);
-    if (authState.user == null) return;
-
-    _sessionService.submitAnswer(
-      widget.sessionId,
-      authState.user!.userId,
-      choice != null ? ['A', 'B', 'C', 'D'].indexOf(choice) : -1,
-      _isCorrect,
-    );
   }
 
   void _showResultAndNext() {
@@ -148,48 +96,55 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
         });
         _startTimer();
       } else {
-        // Firebaseにクイズ完了を記録
-        final authState = ref.read(authProvider);
-        if (authState.user != null) {
-          _sessionService.markQuizCompleted(
-            widget.sessionId,
-            authState.user!.userId,
-            _correctCount,
-            _questions.length,
-          );
-        }
-        Navigator.pushReplacementNamed(context, '/result', arguments: {
-          'sessionId': widget.sessionId,
-          'roomCode': widget.roomCode,
-          'subjectName': widget.subjectName,
-          'lectureNo': widget.lectureNo,
-          'correctCount': _correctCount,
-          'totalQuestions': _questions.length,
-          'totalPoints': _totalPoints,
-          'questions': _questions.map((q) => q.toMap()).toList(),
-        });
+        _showRetestResult();
       }
     });
   }
 
+  void _showRetestResult() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('再試験結果'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$_correctCount / ${_questions.length}',
+              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '再試験のためポイントは加算されません',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+            },
+            child: const Text('ホームに戻る'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
-      );
-    }
-
     final question = _questions[_currentIndex];
     final choices = ['A', 'B', 'C', 'D'];
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
+        backgroundColor: Colors.red,
         automaticallyImplyLeading: false,
         title: Text(
-          'Q${_currentIndex + 1} / ${_questions.length}',
+          '再試験 Q${_currentIndex + 1} / ${_questions.length}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -197,26 +152,15 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: _remainingSeconds <= 10 ? Colors.red : Colors.white24,
+              color: _remainingSeconds <= 10 ? Colors.yellow : Colors.white24,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.timer,
-                  color: _remainingSeconds <= 10 ? Colors.white : Colors.white70,
-                  size: 18,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '$_remainingSeconds秒',
-                  style: TextStyle(
-                    color: _remainingSeconds <= 10 ? Colors.white : Colors.white70,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+            child: Text(
+              '$_remainingSeconds秒',
+              style: TextStyle(
+                color: _remainingSeconds <= 10 ? Colors.red : Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -227,12 +171,28 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ポイント0の警告
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '再試験（ポイント加算なし）',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               LinearProgressIndicator(
                 value: (_currentIndex + 1) / _questions.length,
                 backgroundColor: Colors.grey[300],
-                color: const Color(0xFF4CAF50),
+                color: Colors.red,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               // 問題文
               Expanded(

@@ -1,9 +1,9 @@
-// ホーム画面
-import 'dart:async';
+// ホーム画面（v2: ルーム作成/参加・プロフィール）
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/services.dart';
+import '../../models/models.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -13,182 +13,85 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final CsvImportService _csvService = CsvImportService();
   final FirebaseSessionService _sessionService = FirebaseSessionService();
-  StreamSubscription<Map<String, dynamic>?>? _sessionSubscription;
-  Map<String, dynamic>? _activeSession;
-  int _remainingJoinTime = 0;
-  Timer? _joinTimer;
-  bool _isJoining = false;
-  int _participantCount = 0;
-  bool _hasJoinedSession = false;
-  bool? _isWifiAvailable;
-  String? _wifiName;
-  String? _currentRoomCode;
-  final TextEditingController _roomCodeController = TextEditingController();
+  final TextEditingController _inviteCodeController = TextEditingController();
+  bool _isImporting = false;
+  bool _isImported = false;
+  UserProfile? _profile;
 
   @override
   void initState() {
     super.initState();
-    // WiFi情報をチェックしてから処理を開始
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkWifiAndStart();
-    });
+    _initData();
   }
 
   @override
   void dispose() {
-    _sessionSubscription?.cancel();
-    _joinTimer?.cancel();
-    _roomCodeController.dispose();
+    _inviteCodeController.dispose();
     super.dispose();
   }
 
-  Future<void> _checkWifiAndStart() async {
-    final isAvailable = await _sessionService.isWifiAvailable();
-    final wifiName = await _sessionService.getWifiName();
-
-    if (mounted) {
-      setState(() {
-        _isWifiAvailable = isAvailable;
-        _wifiName = wifiName;
-      });
-
-      if (isAvailable) {
-        // WiFi利用可能：自動でセッションに参加
-        _watchActiveSession();
-        _autoJoinSession();
+  Future<void> _initData() async {
+    // CSVインポート（初回のみ）
+    if (!_isImported) {
+      setState(() => _isImporting = true);
+      try {
+        await _csvService.importFromAsset('assets/karute_data.csv');
+        _isImported = true;
+      } catch (e) {
+        // インポートエラーは無視（既にインポート済みの可能性）
       }
-      // WiFi利用不可：ルームコード入力を待つ
+      if (mounted) setState(() => _isImporting = false);
     }
+
+    // プロフィール読み込み
+    _loadProfile();
   }
 
-  void _watchActiveSession({String? roomCode}) {
-    _sessionSubscription?.cancel();
-    _sessionSubscription = _sessionService.watchActiveSession(roomCode: roomCode).listen((session) {
+  Future<void> _loadProfile() async {
+    final authState = ref.read(authProvider);
+    if (authState.user != null) {
+      final profile = await _sessionService.getUserProfile(authState.user!.userId);
       if (mounted) {
-        setState(() {
-          _activeSession = session;
-          if (session != null) {
-            _currentRoomCode = session['roomCode'] as String?;
-          }
-        });
-        if (session != null) {
-          _updateJoinTimer(session);
-          _participantCount = session['participantCount'] ?? 0;
-        }
+        setState(() => _profile = profile);
       }
-    });
-  }
-
-  void _updateJoinTimer(Map<String, dynamic> session) {
-    final createdAt = session['createdAt'] as int?;
-    if (createdAt == null) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final elapsed = (now - createdAt) / 1000;
-    final remaining = (FirebaseSessionService.joinWindowSeconds - elapsed).ceil();
-
-    if (remaining > 0 && remaining != _remainingJoinTime) {
-      _joinTimer?.cancel();
-      _remainingJoinTime = remaining;
-
-      _joinTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (mounted) {
-          setState(() {
-            _remainingJoinTime--;
-          });
-          if (_remainingJoinTime <= 0) {
-            timer.cancel();
-          }
-        }
-      });
     }
   }
 
-  Future<void> _autoJoinSession({String? roomCode}) async {
-    if (_isJoining || _hasJoinedSession) return;
+  Future<void> _joinByInviteCode() async {
+    final code = _inviteCodeController.text.trim();
+    if (code.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('6桁の招待番号を入力してください')),
+      );
+      return;
+    }
 
-    setState(() => _isJoining = true);
-
-    try {
+    final session = await _sessionService.joinByRoomCode(code);
+    if (session != null && mounted) {
       final authState = ref.read(authProvider);
-      if (authState.user == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ユーザー情報がありません')),
-          );
-          setState(() => _isJoining = false);
-        }
-        return;
-      }
-
-      // セッションを取得または作成
-      final session = await _sessionService.getOrCreateActiveSession(roomCode: roomCode);
-      if (session == null) {
-        if (mounted) {
-          if (roomCode != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('ルームコードが無効か、参加時間が過ぎています')),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('セッションを作成できませんでした')),
-            );
-          }
-          setState(() => _isJoining = false);
-        }
-        return;
-      }
-
-      // ルームコードを保存
-      setState(() {
-        _currentRoomCode = session['roomCode'] as String?;
-      });
-
-      // セッションに参加
       await _sessionService.joinSession(
         session['sessionId'],
         authState.user!.userId,
         authState.user!.displayName,
       );
-
-      _hasJoinedSession = true;
-
       if (mounted) {
-        // ロビー画面に遷移（30秒待機）
-        Navigator.pushNamed(
-          context,
-          '/lobby',
-          arguments: {
-            'sessionId': session['sessionId'],
-            'sharedSession': session,
-          },
-        );
+        Navigator.pushNamed(context, '/lobby', arguments: {
+          'sessionId': session['sessionId'],
+          'roomCode': code,
+          'grade': session['grade'] ?? 0,
+          'term': session['term'] ?? 0,
+          'subjectId': session['subjectId'] ?? '',
+          'subjectName': session['subjectName'] ?? '',
+          'isHost': false,
+        });
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('接続エラー: $e'),
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        setState(() => _isJoining = false);
-      }
-    }
-  }
-
-  Future<void> _joinByRoomCode() async {
-    final code = _roomCodeController.text.trim();
-    if (code.length != 6) {
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('6桁のルームコードを入力してください')),
+        const SnackBar(content: Text('招待番号が無効か、募集が締め切られています')),
       );
-      return;
     }
-
-    _watchActiveSession(roomCode: code);
-    await _autoJoinSession(roomCode: code);
   }
 
   @override
@@ -199,377 +102,82 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         backgroundColor: const Color(0xFF4CAF50),
-        title: const Text(
-          'Quiz Buddies',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Quiz Buddies', style: TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: () {
-              Navigator.pushNamed(context, '/settings');
-            },
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ユーザー情報
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: const Color(0xFF4CAF50),
-                        radius: 24,
-                        child: Text(
-                          authState.user?.displayName.substring(0, 1) ?? '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              authState.user?.displayName ?? 'ゲスト',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Text(
-                              'ようこそ！',
-                              style: TextStyle(
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      body: _isImporting
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Color(0xFF4CAF50)),
+                  SizedBox(height: 16),
+                  Text('問題データを読み込み中...'),
+                ],
               ),
-
-              const SizedBox(height: 24),
-
-              // セッション状態表示
-              _buildSessionStatusCard(),
-
-              const Expanded(child: SizedBox()),
-
-              // ネットワーク情報
-              _buildNetworkInfoCard(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNetworkInfoCard() {
-    if (_isWifiAvailable == true && _wifiName != null) {
-      return Card(
-        color: Colors.green[50],
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(Icons.wifi, color: Colors.green[700]),
-              const SizedBox(width: 12),
-              Expanded(
+            )
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'WiFi: $_wifiName',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[700],
-                      ),
-                    ),
-                    Text(
-                      '同じWiFiの人と自動でマッチング',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.green[600],
-                      ),
-                    ),
+                    // プロフィールカード
+                    _buildProfileCard(authState),
+                    const SizedBox(height: 24),
+
+                    // ルーム作成ボタン
+                    _buildCreateRoomCard(),
+                    const SizedBox(height: 16),
+
+                    // ルーム参加カード
+                    _buildJoinRoomCard(),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-      );
-    }
+            ),
+    );
+  }
 
+  Widget _buildProfileCard(AuthState authState) {
     return Card(
-      color: Colors.orange[50],
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.wifi_off, color: Colors.orange[700]),
-            const SizedBox(width: 12),
+            CircleAvatar(
+              backgroundColor: const Color(0xFF4CAF50),
+              radius: 28,
+              child: Text(
+                authState.user?.displayName.substring(0, 1) ?? '?',
+                style: const TextStyle(color: Colors.white, fontSize: 22),
+              ),
+            ),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'WiFi情報を取得できません',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange[700],
-                    ),
+                    authState.user?.displayName ?? 'ゲスト',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
-                  Text(
-                    'ルームコードを使って参加してください',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSessionStatusCard() {
-    // WiFi利用不可の場合：ルームコード入力画面
-    if (_isWifiAvailable == false) {
-      return _buildRoomCodeInputCard();
-    }
-
-    // WiFiチェック中
-    if (_isWifiAvailable == null) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              const CircularProgressIndicator(
-                color: Color(0xFF4CAF50),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'ネットワークを確認中...',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_isJoining) {
-      // 接続中
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              const CircularProgressIndicator(
-                color: Color(0xFF4CAF50),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'セッションに接続中...',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '同じWiFiの参加者を探しています',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_activeSession != null && _remainingJoinTime > 0) {
-      // アクティブセッションあり
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                  if (_profile != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
-                        const Icon(Icons.people, color: Colors.white, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          '参加募集中 $_remainingJoinTime秒',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        _buildBadge('ランク ${_profile!.rank}', Colors.orange),
+                        const SizedBox(width: 8),
+                        _buildBadge('${_profile!.totalPoints}pt', Colors.blue),
                       ],
                     ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '$_participantCount人参加中',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
+                  ],
                 ],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'クイズセッションが開催中！',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (_currentRoomCode != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.share, color: Colors.blue[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'ルームコード',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue[600],
-                              ),
-                            ),
-                            Text(
-                              _currentRoomCode!,
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue[700],
-                                letterSpacing: 4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'このコードを友達に共有して参加してもらえます',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              const LinearProgressIndicator(
-                color: Colors.orange,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // セッションなし - 再試行ボタン
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Icon(
-              Icons.wifi_off,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '接続できませんでした',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'ネットワークを確認してください',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  _hasJoinedSession = false;
-                  _autoJoinSession();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4CAF50),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text(
-                  '再接続する',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white,
-                  ),
-                ),
               ),
             ),
           ],
@@ -578,55 +186,93 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildRoomCodeInputCard() {
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _buildCreateRoomCard() {
+    return Card(
+      color: const Color(0xFF4CAF50),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.pushNamed(context, '/select-grade'),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Row(
+            children: [
+              Icon(Icons.add_circle_outline, color: Colors.white, size: 40),
+              SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ルームを作成',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '学年・学期・科目を選んでクイズを始めよう',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJoinRoomCard() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.meeting_room,
-              size: 64,
-              color: Colors.blue[400],
+            const Row(
+              children: [
+                Icon(Icons.group_add, color: Color(0xFF4CAF50), size: 28),
+                SizedBox(width: 12),
+                Text(
+                  'ルームに参加',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'ルームコードで参加',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '友達からもらったルームコードを入力してください',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
             TextField(
-              controller: _roomCodeController,
+              controller: _inviteCodeController,
               keyboardType: TextInputType.number,
               maxLength: 6,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: 28,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 8,
               ),
               decoration: InputDecoration(
                 hintText: '000000',
-                hintStyle: TextStyle(
-                  color: Colors.grey[400],
-                  letterSpacing: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                hintStyle: TextStyle(color: Colors.grey[400], letterSpacing: 8),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 counterText: '',
               ),
             ),
@@ -634,95 +280,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isJoining ? null : _joinByRoomCode,
+                onPressed: _joinByInviteCode,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isJoining
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        '参加する',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            Text(
-              'または',
-              style: TextStyle(
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _isJoining
-                    ? null
-                    : () async {
-                        // 新しいルームを作成
-                        setState(() => _isJoining = true);
-                        final authState = ref.read(authProvider);
-                        if (authState.user == null) {
-                          setState(() => _isJoining = false);
-                          return;
-                        }
-
-                        // 新しいルームを作成（コードは自動生成）
-                        final session = await _sessionService.createNewRoom();
-                        if (session != null) {
-                          final roomCode = session['roomCode'] as String?;
-                          setState(() {
-                            _currentRoomCode = roomCode;
-                          });
-                          _watchActiveSession(roomCode: roomCode);
-
-                          await _sessionService.joinSession(
-                            session['sessionId'],
-                            authState.user!.userId,
-                            authState.user!.displayName,
-                          );
-
-                          _hasJoinedSession = true;
-
-                          if (mounted) {
-                            Navigator.pushNamed(
-                              context,
-                              '/lobby',
-                              arguments: {
-                                'sessionId': session['sessionId'],
-                                'sharedSession': session,
-                              },
-                            );
-                          }
-                        } else {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('ルーム作成に失敗しました')),
-                            );
-                          }
-                        }
-                        setState(() => _isJoining = false);
-                      },
-                style: OutlinedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: const Text(
-                  '新しいルームを作成',
-                  style: TextStyle(fontSize: 16),
+                  '参加する',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
               ),
             ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:uuid/uuid.dart';
+import '../models/user_profile.dart';
 import 'session_service.dart';
 import 'wifi_service.dart';
 
@@ -95,6 +96,45 @@ class FirebaseSessionService {
       final roomCode = _generateRoomCode();
       final sessionKey = 'code_$roomCode';
       return await _createNewSession(sessionKey);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ルーム作成（学年/学期/科目指定）
+  Future<Map<String, dynamic>?> createRoomSession({
+    required int grade,
+    required int term,
+    required String subjectId,
+    required String subjectName,
+  }) async {
+    try {
+      final roomCode = _generateRoomCode();
+      final sessionId = const Uuid().v4();
+
+      final sessionData = {
+        'sessionId': sessionId,
+        'roomCode': roomCode,
+        'grade': grade,
+        'term': term,
+        'subjectId': subjectId,
+        'subjectName': subjectName,
+        'createdAt': ServerValue.timestamp,
+        'phase': 'lobby',
+        'participantCount': 0,
+      };
+
+      // Firebaseに保存
+      final sessionPath = _getSessionPath('code_$roomCode');
+      await _db.child(sessionPath).set(sessionData);
+
+      _currentRoomCode = roomCode;
+
+      // createdAtをローカル時刻で補完
+      final now = DateTime.now().millisecondsSinceEpoch;
+      sessionData['createdAt'] = now;
+
+      return sessionData;
     } catch (e) {
       return null;
     }
@@ -241,10 +281,11 @@ class FirebaseSessionService {
   }
 
   // セッションフェーズを更新
-  Future<void> updatePhase(String sessionId, String phase) async {
-    final sessionKey = currentSessionKey;
-    if (sessionKey != null) {
-      final sessionPath = _getSessionPath(sessionKey);
+  Future<void> updatePhase(String sessionId, String phase, {String? roomCode}) async {
+    // roomCodeが渡された場合はそれを使う（singleton状態に依存しない）
+    final key = roomCode != null ? 'code_$roomCode' : currentSessionKey;
+    if (key != null) {
+      final sessionPath = _getSessionPath(key);
       await _db.child(sessionPath).child('phase').set(phase);
     }
   }
@@ -256,6 +297,16 @@ class FirebaseSessionService {
       'answerIndex': answerIndex,
       'isCorrect': isCorrect,
       'answeredAt': ServerValue.timestamp,
+    });
+  }
+
+  // クイズ完了をマーク
+  Future<void> markQuizCompleted(String sessionId, String userId, int correctCount, int totalQuestions) async {
+    await _db.child('sessions').child(sessionId).child('participants').child(userId).update({
+      'quizCompleted': true,
+      'correctCount': correctCount,
+      'totalQuestions': totalQuestions,
+      'completedAt': ServerValue.timestamp,
     });
   }
 
@@ -337,5 +388,29 @@ class FirebaseSessionService {
   // WiFi名を取得（表示用）
   Future<String?> getWifiName() async {
     return await _wifiService.getWifiName();
+  }
+
+  // ユーザープロフィールを取得
+  Future<UserProfile?> getUserProfile(String userId) async {
+    final snapshot = await _db.child('user_profiles').child(userId).get();
+    if (!snapshot.exists) return null;
+    return UserProfile.fromMap(Map<String, dynamic>.from(snapshot.value as Map));
+  }
+
+  // ユーザープロフィールを更新
+  Future<void> updateUserProfile(UserProfile profile) async {
+    await _db.child('user_profiles').child(profile.userId).set(profile.toMap());
+  }
+
+  // ポイントを加算
+  Future<void> addPoints(String userId, String displayName, int points, int correctCount, int totalQuestions) async {
+    final existing = await getUserProfile(userId);
+    final profile = existing ?? UserProfile(userId: userId, displayName: displayName);
+    final updated = profile.copyWith(
+      totalPoints: profile.totalPoints + points,
+      totalQuizzes: profile.totalQuizzes + totalQuestions,
+      correctCount: profile.correctCount + correctCount,
+    );
+    await updateUserProfile(updated);
   }
 }

@@ -70,12 +70,55 @@ class QuizBuddiesApp extends StatelessWidget {
           builder: (_) => const HomeScreen(),
         );
 
+      case '/select-grade':
+        return MaterialPageRoute(
+          builder: (_) => const GradeSelectScreen(),
+        );
+
+      case '/select-term':
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => TermSelectScreen(
+            grade: args['grade'] as int,
+          ),
+        );
+
+      case '/select-subject':
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => SubjectSelectScreen(
+            grade: args['grade'] as int,
+            term: args['term'] as int,
+          ),
+        );
+
       case '/lobby':
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
           builder: (_) => LobbyScreen(
+            sessionId: args['sessionId'] as String?,
+            roomCode: args['roomCode'] as String?,
+            grade: args['grade'] as int? ?? 0,
+            term: args['term'] as int? ?? 0,
+            subjectId: args['subjectId'] as String? ?? '',
+            subjectName: args['subjectName'] as String? ?? '',
+            isHost: args['isHost'] as bool? ?? false,
+          ),
+        );
+
+      case '/roulette':
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => RouletteScreen(
             sessionId: args['sessionId'] as String,
-            sharedSession: args['sharedSession'] as Map<String, dynamic>,
+            roomCode: args['roomCode'] as String? ?? '',
+            grade: args['grade'] as int? ?? 0,
+            term: args['term'] as int? ?? 0,
+            subjectId: args['subjectId'] as String? ?? '',
+            subjectName: args['subjectName'] as String? ?? '',
+            selectedLecture: args['selectedLecture'] is num
+                ? (args['selectedLecture'] as num).toInt()
+                : null,
           ),
         );
 
@@ -84,7 +127,12 @@ class QuizBuddiesApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => QuizScreen(
             sessionId: args['sessionId'] as String,
-            sharedSession: args['sharedSession'] as Map<String, dynamic>?,
+            roomCode: args['roomCode'] as String?,
+            grade: args['grade'] as int? ?? 0,
+            term: args['term'] as int? ?? 0,
+            subjectId: args['subjectId'] as String? ?? '',
+            subjectName: args['subjectName'] as String? ?? '',
+            lectureNo: args['lectureNo'] as int? ?? 0,
           ),
         );
 
@@ -93,35 +141,46 @@ class QuizBuddiesApp extends StatelessWidget {
         return MaterialPageRoute(
           builder: (_) => ResultScreen(
             sessionId: args['sessionId'] as String,
-            isCorrect: args['isCorrect'] as bool,
+            roomCode: args['roomCode'] as String?,
+            subjectName: args['subjectName'] as String? ?? '',
+            lectureNo: args['lectureNo'] as int? ?? 0,
+            correctCount: args['correctCount'] as int? ?? 0,
+            totalQuestions: args['totalQuestions'] as int? ?? 0,
+            totalPoints: args['totalPoints'] as int? ?? 0,
+            questions: args['questions'] as List<Map<String, dynamic>>? ?? [],
           ),
         );
 
-      case '/group-room':
+      case '/review':
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
-          builder: (_) => GroupRoomScreen(
+          builder: (_) => ReviewScreen(
             sessionId: args['sessionId'] as String,
-            isCorrect: args['isCorrect'] as bool,
+            questions: args['questions'] as List<Map<String, dynamic>>,
           ),
         );
 
-      case '/one-on-one':
+      case '/chat':
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
-          builder: (_) => OneOnOneScreen(
+          builder: (_) => ChatScreen(
             sessionId: args['sessionId'] as String,
-            isCorrect: args['isCorrect'] as bool,
-            partnerId: args['partnerId'] as String?,
-            isAIPartner: args['isAIPartner'] as bool? ?? false,
+            correctCount: args['correctCount'] as int? ?? 0,
+            totalQuestions: args['totalQuestions'] as int? ?? 0,
+            questions: args['questions'] as List<Map<String, dynamic>>? ?? [],
+            subjectName: args['subjectName'] as String? ?? '',
+            lectureNo: args['lectureNo'] as int? ?? 0,
           ),
         );
 
-      case '/common-room':
+      case '/retest':
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
-          builder: (_) => CommonRoomScreen(
+          builder: (_) => RetestScreen(
             sessionId: args['sessionId'] as String,
+            questions: args['questions'] as List<Map<String, dynamic>>,
+            subjectName: args['subjectName'] as String? ?? '',
+            lectureNo: args['lectureNo'] as int? ?? 0,
           ),
         );
 

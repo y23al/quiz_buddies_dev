@@ -2,9 +2,13 @@
 export 'auth/auth_screen.dart';
 export 'home/home_screen.dart';
 export 'lobby/lobby_screen.dart';
+export 'select/grade_select_screen.dart';
+export 'select/term_select_screen.dart';
+export 'select/subject_select_screen.dart';
+export 'roulette/roulette_screen.dart';
 export 'quiz/quiz_screen.dart';
 export 'quiz/result_screen.dart';
-export 'room/group_room_screen.dart';
-export 'room/one_on_one_screen.dart';
-export 'room/common_room_screen.dart';
+export 'quiz/retest_screen.dart';
+export 'review/review_screen.dart';
+export 'room/chat_screen.dart';
 export 'settings/settings_screen.dart';

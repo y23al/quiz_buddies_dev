@@ -38,7 +38,27 @@ class AuthService {
       password: password,
     );
     await credential.user!.updateDisplayName(displayName);
-    await credential.user!.sendEmailVerification();
+
+    // 認証メール送信（ActionCodeSettingsでリダイレクトURL指定）
+    try {
+      final actionCodeSettings = ActionCodeSettings(
+        url: 'https://quiz-buddies-3a96c.web.app',
+        handleCodeInApp: false,
+      );
+      await credential.user!.sendEmailVerification(actionCodeSettings);
+      print('[Auth] 認証メール送信成功: $email');
+    } catch (e) {
+      print('[Auth] 認証メール送信エラー: $e');
+      // フォールバック: ActionCodeSettings無しで再試行
+      try {
+        await credential.user!.sendEmailVerification();
+        print('[Auth] 認証メール送信成功（フォールバック）: $email');
+      } catch (e2) {
+        print('[Auth] 認証メール送信エラー（フォールバック）: $e2');
+        rethrow;
+      }
+    }
+
     await credential.user!.reload();
     return _mapFirebaseUser(_firebaseAuth.currentUser!);
   }
@@ -60,7 +80,18 @@ class AuthService {
   Future<void> resendVerificationEmail() async {
     final user = _firebaseAuth.currentUser;
     if (user != null && !user.emailVerified) {
-      await user.sendEmailVerification();
+      try {
+        final actionCodeSettings = ActionCodeSettings(
+          url: 'https://quiz-buddies-3a96c.web.app',
+          handleCodeInApp: false,
+        );
+        await user.sendEmailVerification(actionCodeSettings);
+        print('[Auth] 認証メール再送成功: ${user.email}');
+      } catch (e) {
+        print('[Auth] 認証メール再送エラー: $e');
+        // フォールバック
+        await user.sendEmailVerification();
+      }
     }
   }
 

@@ -370,7 +370,29 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            // 迷惑メール注意
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'メールが届かない場合、迷惑メールフォルダもご確認ください。\n送信元: noreply@quiz-buddies-3a96c.firebaseapp.com',
+                      style: TextStyle(fontSize: 12, color: Colors.orange[800]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             const SizedBox(
               width: 24,
               height: 24,
@@ -386,11 +408,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: () async {
-                  await ref.read(authProvider.notifier).resendVerificationEmail();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('認証メールを再送しました')),
-                    );
+                  try {
+                    await ref.read(authProvider.notifier).resendVerificationEmail();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('認証メールを再送しました')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('再送に失敗しました: $e')),
+                      );
+                    }
                   }
                 },
                 icon: const Icon(Icons.refresh),

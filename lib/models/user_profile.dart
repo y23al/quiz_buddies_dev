@@ -1,4 +1,4 @@
-// ユーザープロフィールモデル（ポイント・ランク）
+// ユーザープロフィールモデル（ポイント・ティア）
 class UserProfile {
   final String userId;
   final String displayName;
@@ -14,13 +14,40 @@ class UserProfile {
     this.correctCount = 0,
   });
 
-  String get rank {
-    if (totalPoints >= 1000) return 'S';
-    if (totalPoints >= 500) return 'A';
-    if (totalPoints >= 200) return 'B';
-    if (totalPoints >= 50) return 'C';
-    return 'D';
+  // ティア判定
+  String get tier {
+    if (totalPoints >= 1501) return 'Platinum';
+    if (totalPoints >= 1001) return 'Gold';
+    if (totalPoints >= 501) return 'Silver';
+    return 'Bronze';
   }
+
+  // ティアカラー値
+  int get tierColorValue {
+    if (totalPoints >= 1501) return 0xFF00BCD4;
+    if (totalPoints >= 1001) return 0xFFFFD700;
+    if (totalPoints >= 501) return 0xFF9E9E9E;
+    return 0xFFCD7F32;
+  }
+
+  // 次ティアまでのポイント
+  int get pointsToNextTier {
+    if (totalPoints >= 1501) return 0;
+    if (totalPoints >= 1001) return 1501 - totalPoints;
+    if (totalPoints >= 501) return 1001 - totalPoints;
+    return 501 - totalPoints;
+  }
+
+  // 現ティア内の進捗 (0.0〜1.0)
+  double get tierProgress {
+    if (totalPoints >= 1501) return 1.0;
+    if (totalPoints >= 1001) return (totalPoints - 1001) / 500;
+    if (totalPoints >= 501) return (totalPoints - 501) / 500;
+    return totalPoints / 501;
+  }
+
+  // 後方互換: rankはtierのエイリアス
+  String get rank => tier;
 
   double get correctRate {
     if (totalQuizzes == 0) return 0;

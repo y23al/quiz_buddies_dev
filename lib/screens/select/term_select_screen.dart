@@ -8,9 +8,8 @@ class TermSelectScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 選択可能な学期（前期:1〜7、後期:8〜14 など柔軟に）
-    // CSVデータに合わせて1〜10の範囲で表示
-    final terms = List.generate(10, (i) => i + 1);
+    // 選択可能な学期（1〜5学期）
+    final terms = List.generate(5, (i) => i + 1);
 
     return Scaffold(
       backgroundColor: Colors.grey[100],

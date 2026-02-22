@@ -69,27 +69,41 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
     final authState = ref.read(authProvider);
     if (authState.user == null) return;
 
-    // 新しいルームを作成
-    final session = await _sessionService.createRoomSession(
-      grade: widget.grade,
-      term: widget.term,
-      subjectId: widget.subjectId,
-      subjectName: widget.subjectName,
-    );
-
-    if (session != null && mounted) {
-      _sessionId = session['sessionId'] as String;
-      _roomCode = session['roomCode'] as String;
-
-      // ホストがセッションに参加
-      await _sessionService.joinSession(
-        _sessionId!,
-        authState.user!.userId,
-        authState.user!.displayName,
+    try {
+      // 新しいルームを作成
+      final session = await _sessionService.createRoomSession(
+        grade: widget.grade,
+        term: widget.term,
+        subjectId: widget.subjectId,
+        subjectName: widget.subjectName,
       );
 
-      setState(() => _isCreating = false);
-      _watchParticipants();
+      if (session != null && mounted) {
+        _sessionId = session['sessionId'] as String;
+        _roomCode = session['roomCode'] as String;
+
+        // ホストがセッションに参加
+        await _sessionService.joinSession(
+          _sessionId!,
+          authState.user!.userId,
+          authState.user!.displayName,
+        );
+
+        setState(() => _isCreating = false);
+        _watchParticipants();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ルーム作成に失敗しました')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('エラー: $e')),
+        );
+        Navigator.pop(context);
+      }
     }
   }
 

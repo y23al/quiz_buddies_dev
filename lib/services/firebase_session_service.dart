@@ -413,4 +413,42 @@ class FirebaseSessionService {
     );
     await updateUserProfile(updated);
   }
+
+  // 全ユーザープロフィールを取得（ランキング用、totalPoints降順）
+  Future<List<UserProfile>> getAllUserProfiles() async {
+    final snapshot = await _db.child('user_profiles').get();
+    if (!snapshot.exists) return [];
+    final data = Map<String, dynamic>.from(snapshot.value as Map);
+    final profiles = data.entries
+        .map((e) => UserProfile.fromMap(Map<String, dynamic>.from(e.value as Map)))
+        .toList();
+    profiles.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
+    return profiles;
+  }
+
+  // 全ユーザープロフィールをリアルタイム監視
+  Stream<List<UserProfile>> watchAllUserProfiles() {
+    return _db.child('user_profiles').onValue.map((event) {
+      if (!event.snapshot.exists) return <UserProfile>[];
+      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+      final profiles = data.entries
+          .map((e) => UserProfile.fromMap(Map<String, dynamic>.from(e.value as Map)))
+          .toList();
+      profiles.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
+      return profiles;
+    });
+  }
+
+  // ルーレット状態を更新
+  Future<void> updateRouletteState(String sessionId, String userId, int currentDisplay, bool isDone) async {
+    await _db
+        .child('sessions')
+        .child(sessionId)
+        .child('participants')
+        .child(userId)
+        .update({
+      'rouletteDisplay': currentDisplay,
+      'rouletteDone': isDone,
+    });
+  }
 }

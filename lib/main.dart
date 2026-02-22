@@ -184,6 +184,11 @@ class QuizBuddiesApp extends StatelessWidget {
           ),
         );
 
+      case '/ranking':
+        return MaterialPageRoute(
+          builder: (_) => const RankingScreen(),
+        );
+
       case '/settings':
         return MaterialPageRoute(
           builder: (_) => const SettingsScreen(),

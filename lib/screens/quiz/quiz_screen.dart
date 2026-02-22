@@ -64,9 +64,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     );
 
     if (mounted) {
-      if (questions.length < AppConfig.quizQuestionCount) {
+      if (questions.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('問題不足：${questions.length}問しかありません（10問必要）')),
+          const SnackBar(content: Text('この授業回には問題がありません')),
         );
         Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
         return;

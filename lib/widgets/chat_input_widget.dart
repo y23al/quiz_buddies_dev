@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 
 class ChatInputWidget extends StatefulWidget {
   final Function(String) onSend;
+  final String? hintText;
 
   const ChatInputWidget({
     super.key,
     required this.onSend,
+    this.hintText,
   });
 
   @override
@@ -49,7 +51,7 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -66,9 +68,9 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                 ),
                 child: TextField(
                   controller: _controller,
-                  decoration: const InputDecoration(
-                    hintText: 'メッセージを入力...',
-                    hintStyle: TextStyle(color: Colors.grey),
+                  decoration: InputDecoration(
+                    hintText: widget.hintText ?? 'メッセージを入力...',
+                    hintStyle: const TextStyle(color: Colors.grey),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: 16,

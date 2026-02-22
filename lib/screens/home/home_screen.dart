@@ -13,11 +13,11 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  static bool _hasImported = false; // アプリセッション内で1回だけインポート
+
   final CsvImportService _csvService = CsvImportService();
   final FirebaseSessionService _sessionService = FirebaseSessionService();
   final TextEditingController _inviteCodeController = TextEditingController();
-  bool _isImporting = false;
-  bool _isImported = false;
   UserProfile? _profile;
 
   @override
@@ -33,16 +33,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _initData() async {
-    // CSVインポート（初回のみ）
-    if (!_isImported) {
-      setState(() => _isImporting = true);
-      try {
-        await _csvService.importFromAsset('assets/karute_data.csv');
-        _isImported = true;
-      } catch (e) {
-        // インポートエラーは無視（既にインポート済みの可能性）
-      }
-      if (mounted) setState(() => _isImporting = false);
+    // CSVインポート（アプリセッション内で初回のみ、バックグラウンドで実行）
+    if (!_hasImported) {
+      _hasImported = true;
+      _csvService.importFromAsset('assets/karute_data.csv').ignore();
     }
 
     // プロフィール読み込み
@@ -105,42 +99,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('Quiz Buddies', style: TextStyle(color: Colors.white)),
         actions: [
           IconButton(
+            icon: const Icon(Icons.leaderboard, color: Colors.white),
+            onPressed: () => Navigator.pushNamed(context, '/ranking'),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
       ),
-      body: _isImporting
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Color(0xFF4CAF50)),
-                  SizedBox(height: 16),
-                  Text('問題データを読み込み中...'),
-                ],
-              ),
-            )
-          : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // プロフィールカード
-                    _buildProfileCard(authState),
-                    const SizedBox(height: 24),
-
-                    // ルーム作成ボタン
-                    _buildCreateRoomCard(),
-                    const SizedBox(height: 16),
-
-                    // ルーム参加カード
-                    _buildJoinRoomCard(),
-                  ],
-                ),
-              ),
-            ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProfileCard(authState),
+              const SizedBox(height: 24),
+              _buildCreateRoomCard(),
+              const SizedBox(height: 16),
+              _buildJoinRoomCard(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -171,7 +153,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        _buildBadge('ランク ${_profile!.rank}', Colors.orange),
+                        _buildBadge(_profile!.tier, Color(_profile!.tierColorValue)),
                         const SizedBox(width: 8),
                         _buildBadge('${_profile!.totalPoints}pt', Colors.blue),
                       ],

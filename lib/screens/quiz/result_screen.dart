@@ -42,7 +42,10 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   Timer? _exitTimer;
   StreamSubscription? _participantSubscription;
 
-  bool get _needsRetest => widget.correctCount <= AppConfig.retestThreshold;
+  // 正解率60%未満で再試験
+  bool get _needsRetest =>
+      widget.totalQuestions > 0 &&
+      widget.correctCount / widget.totalQuestions < 0.6;
 
   @override
   void initState() {
@@ -233,7 +236,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                 ),
                               ),
                               Text(
-                                '正解数${AppConfig.retestThreshold}問以下のため、退出後に再試験があります',
+                                '正解率60%未満のため、退出後に再試験があります',
                                 style: TextStyle(color: Colors.red[700], fontSize: 12),
                               ),
                             ],

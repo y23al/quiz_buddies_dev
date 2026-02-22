@@ -2,7 +2,6 @@
 import 'dart:math';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
-import 'auth_service.dart';
 import 'ai_service.dart';
 
 // デモデータストレージ
@@ -17,22 +16,18 @@ class SessionService {
 
   // 現在のセッションを取得
   Future<Session?> getCurrentSession() async {
-    if (isDemoMode) {
-      for (final session in _demoSessions.values) {
-        if ([
-          SessionPhase.joinable,
-          SessionPhase.quiz,
-          SessionPhase.splitRoom,
-          SessionPhase.matching,
-          SessionPhase.oneOnOne,
-          SessionPhase.common,
-        ].contains(session.phase)) {
-          return session;
-        }
+    for (final session in _demoSessions.values) {
+      if ([
+        SessionPhase.joinable,
+        SessionPhase.quiz,
+        SessionPhase.splitRoom,
+        SessionPhase.matching,
+        SessionPhase.oneOnOne,
+        SessionPhase.common,
+      ].contains(session.phase)) {
+        return session;
       }
-      return null;
     }
-    // TODO: Firestore実装
     return null;
   }
 

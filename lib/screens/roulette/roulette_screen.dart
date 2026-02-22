@@ -1,9 +1,10 @@
-// ルーレット画面（Firebase から授業回を読み取り + スピンアニメーション）
+// ルーレット画面（マルチユーザー対応 + Firebase同期）
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/providers.dart';
 import '../../services/services.dart';
 
 class RouletteScreen extends ConsumerStatefulWidget {
@@ -33,6 +34,7 @@ class RouletteScreen extends ConsumerStatefulWidget {
 class _RouletteScreenState extends ConsumerState<RouletteScreen>
     with SingleTickerProviderStateMixin {
   final CsvImportService _csvService = CsvImportService();
+  final FirebaseSessionService _sessionService = FirebaseSessionService();
 
   List<int> _lectureNos = [];
   bool _isLoading = true;
@@ -46,20 +48,42 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
   int _totalSpinSteps = 0;
   late List<int> _spinSequence;
 
+  // マルチユーザー
+  String? _myUserId;
+  List<Map<String, dynamic>> _otherParticipants = [];
+  StreamSubscription? _participantSubscription;
+  int _writeThrottle = 0;
+
   @override
   void initState() {
     super.initState();
+    final authState = ref.read(authProvider);
+    _myUserId = authState.user?.userId;
+    _watchOtherParticipants();
     _loadAndSpin();
   }
 
   @override
   void dispose() {
     _spinTimer?.cancel();
+    _participantSubscription?.cancel();
     super.dispose();
   }
 
+  void _watchOtherParticipants() {
+    _participantSubscription = _sessionService
+        .watchParticipants(widget.sessionId)
+        .listen((participants) {
+      if (mounted) {
+        setState(() {
+          _otherParticipants =
+              participants.where((p) => p['odId'] != _myUserId).toList();
+        });
+      }
+    });
+  }
+
   Future<void> _loadAndSpin() async {
-    // 1. Firebaseから確定済みの授業回を読み取る（全端末で同じ値）
     int? selected = widget.selectedLecture;
     if (selected == null && widget.roomCode.isNotEmpty) {
       try {
@@ -72,7 +96,6 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
       } catch (_) {}
     }
 
-    // 2. 授業回一覧を取得（アニメーション用）
     List<int> lectureNos;
     try {
       lectureNos = await _csvService.getLectureNos(widget.subjectId);
@@ -86,7 +109,6 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
       return;
     }
 
-    // 3. スピン用のシーケンスを構築（徐々に減速して selected に止まる）
     final random = Random();
     final sequence = _buildSpinSequence(lectureNos, selected, random);
 
@@ -102,23 +124,18 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
     _startSpin();
   }
 
-  /// ルーレット用のシーケンスを生成
-  List<int> _buildSpinSequence(List<int> lectures, int target, Random random) {
+  List<int> _buildSpinSequence(
+      List<int> lectures, int target, Random random) {
     final seq = <int>[];
-
-    // 高速区間: 約30ステップ（ランダム）
     for (int i = 0; i < 30; i++) {
       seq.add(lectures[random.nextInt(lectures.length)]);
     }
-
-    // 減速区間: 順番に回して target に着地
     final targetIdx = lectures.indexOf(target);
     final safeTargetIdx = targetIdx >= 0 ? targetIdx : 0;
     final slowCount = lectures.length * 2 + safeTargetIdx + 1;
     for (int i = 0; i < slowCount; i++) {
       seq.add(lectures[i % lectures.length]);
     }
-
     return seq;
   }
 
@@ -133,6 +150,7 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
         _displayLecture = _selectedLecture!;
         _decided = true;
       });
+      _writeRouletteState(_selectedLecture!, true);
       Future.delayed(const Duration(seconds: 2), _navigateToQuiz);
       return;
     }
@@ -140,6 +158,13 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
     setState(() {
       _displayLecture = _spinSequence[_spinStep];
     });
+
+    // 5ステップごとにFirebaseへ書き込み
+    _writeThrottle++;
+    if (_writeThrottle >= 5) {
+      _writeThrottle = 0;
+      _writeRouletteState(_spinSequence[_spinStep], false);
+    }
 
     final progress = _spinStep / _totalSpinSteps;
     int intervalMs;
@@ -157,6 +182,17 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
     _spinTimer = Timer(Duration(milliseconds: intervalMs), _advanceSpin);
   }
 
+  void _writeRouletteState(int display, bool done) {
+    if (_myUserId != null) {
+      _sessionService.updateRouletteState(
+        widget.sessionId,
+        _myUserId!,
+        display,
+        done,
+      );
+    }
+  }
+
   void _navigateToQuiz() {
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/quiz', arguments: {
@@ -172,124 +208,215 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
 
   @override
   Widget build(BuildContext context) {
-    final progress = _totalSpinSteps > 0 ? _spinStep / _totalSpinSteps : 0.0;
+    final progress =
+        _totalSpinSteps > 0 ? _spinStep / _totalSpinSteps : 0.0;
     final isSlowing = progress > 0.7;
 
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(widget.subjectName, style: const TextStyle(color: Colors.white)),
+        title: Text(widget.subjectName,
+            style: const TextStyle(color: Colors.white)),
         automaticallyImplyLeading: false,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.white))
           : _lectureNos.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.warning_amber, size: 64, color: Colors.orange[300]),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '授業回が見つかりません',
-                        style: TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('戻る'),
-                      ),
-                    ],
-                  ),
-                )
+              ? _buildEmptyState()
               : SafeArea(
                   child: Column(
                     children: [
-                      const Spacer(flex: 2),
+                      const Spacer(flex: 1),
 
+                      // ステータステキスト
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 300),
                         style: TextStyle(
-                          color: _decided ? const Color(0xFF4CAF50) : Colors.white70,
+                          color: _decided
+                              ? const Color(0xFF4CAF50)
+                              : Colors.white70,
                           fontSize: _decided ? 22 : 18,
-                          fontWeight: _decided ? FontWeight.bold : FontWeight.normal,
+                          fontWeight:
+                              _decided ? FontWeight.bold : FontWeight.normal,
                         ),
                         child: Text(_decided ? '決定！' : 'ルーレット'),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 24),
 
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: _decided ? 220 : 200,
-                        height: _decided ? 220 : 200,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _decided
-                              ? const Color(0xFF4CAF50)
-                              : Colors.grey[800],
-                          border: Border.all(
-                            color: _decided
-                                ? const Color(0xFF4CAF50)
-                                : isSlowing
-                                    ? Colors.yellow
-                                    : Colors.orange,
-                            width: _decided ? 6 : 4,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (_decided
-                                      ? const Color(0xFF4CAF50)
-                                      : isSlowing
-                                          ? Colors.yellow
-                                          : Colors.orange)
-                                  .withValues(alpha: _decided ? 0.5 : 0.3),
-                              blurRadius: _decided ? 30 : 20,
-                              spreadRadius: _decided ? 8 : 5,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                      // ルーレットエリア（中央メイン + 周囲に他ユーザー）
+                      SizedBox(
+                        height: 320,
+                        child: Stack(
+                          alignment: Alignment.center,
                           children: [
-                            const Text(
-                              '第',
-                              style: TextStyle(color: Colors.white70, fontSize: 20),
-                            ),
-                            AnimatedDefaultTextStyle(
-                              duration: const Duration(milliseconds: 150),
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: _decided ? 80 : 72,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              child: Text('$_displayLecture'),
-                            ),
-                            const Text(
-                              '回',
-                              style: TextStyle(color: Colors.white70, fontSize: 20),
-                            ),
+                            ..._buildOtherUserRoulettes(),
+                            _buildMainRoulette(isSlowing),
                           ],
                         ),
                       ),
 
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 24),
 
                       if (_decided)
                         const Text(
                           'クイズを開始します...',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                          style: TextStyle(
+                              color: Colors.white70, fontSize: 16),
                         )
                       else
                         Text(
-                          isSlowing ? 'もうすぐ止まります...' : '授業回を選んでいます...',
-                          style: const TextStyle(color: Colors.white54, fontSize: 16),
+                          isSlowing
+                              ? 'もうすぐ止まります...'
+                              : '授業回を選んでいます...',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 16),
                         ),
 
-                      const Spacer(flex: 3),
+                      const Spacer(flex: 2),
                     ],
                   ),
                 ),
+    );
+  }
+
+  Widget _buildMainRoulette(bool isSlowing) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: _decided ? 200 : 180,
+      height: _decided ? 200 : 180,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _decided ? const Color(0xFF4CAF50) : Colors.grey[800],
+        border: Border.all(
+          color: _decided
+              ? const Color(0xFF4CAF50)
+              : isSlowing
+                  ? Colors.yellow
+                  : Colors.orange,
+          width: _decided ? 6 : 4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (_decided
+                    ? const Color(0xFF4CAF50)
+                    : isSlowing
+                        ? Colors.yellow
+                        : Colors.orange)
+                .withValues(alpha: _decided ? 0.5 : 0.3),
+            blurRadius: _decided ? 30 : 20,
+            spreadRadius: _decided ? 8 : 5,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('第',
+              style: TextStyle(color: Colors.white70, fontSize: 20)),
+          AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 150),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: _decided ? 72 : 64,
+              fontWeight: FontWeight.bold,
+            ),
+            child: Text('$_displayLecture'),
+          ),
+          const Text('回',
+              style: TextStyle(color: Colors.white70, fontSize: 20)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildOtherUserRoulettes() {
+    final count = _otherParticipants.length;
+    if (count == 0) return [];
+
+    final widgets = <Widget>[];
+    for (int i = 0; i < count; i++) {
+      final p = _otherParticipants[i];
+      final displayName = p['displayName'] as String? ?? '?';
+      final rouletteDisplay = p['rouletteDisplay'];
+      final displayVal =
+          rouletteDisplay is num ? rouletteDisplay.toInt() : null;
+      final rouletteDone = p['rouletteDone'] as bool? ?? false;
+
+      // 極座標で円形配置（上から時計回り）
+      final angle = (2 * pi * i / count) - pi / 2;
+      const radius = 135.0;
+      final dx = radius * cos(angle);
+      final dy = radius * sin(angle);
+
+      widgets.add(
+        Transform.translate(
+          offset: Offset(dx, dy),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: rouletteDone
+                      ? const Color(0xFF4CAF50).withValues(alpha: 0.7)
+                      : Colors.grey[700],
+                  border: Border.all(
+                    color: rouletteDone
+                        ? const Color(0xFF4CAF50)
+                        : Colors.orange.withValues(alpha: 0.5),
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    displayVal != null ? '$displayVal' : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                displayName.length > 6
+                    ? '${displayName.substring(0, 6)}...'
+                    : displayName,
+                style:
+                    const TextStyle(color: Colors.white54, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.warning_amber, size: 64, color: Colors.orange[300]),
+          const SizedBox(height: 16),
+          const Text(
+            '授業回が見つかりません',
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('戻る'),
+          ),
+        ],
+      ),
     );
   }
 }

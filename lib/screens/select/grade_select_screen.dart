@@ -6,8 +6,8 @@ class GradeSelectScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 選択可能な学年（1〜4年）
-    final grades = [1, 2, 3, 4];
+    // 選択可能な学年（1〜2年）
+    final grades = [1, 2];
 
     return Scaffold(
       backgroundColor: Colors.grey[100],

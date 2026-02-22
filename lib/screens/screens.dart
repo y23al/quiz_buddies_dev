@@ -11,4 +11,5 @@ export 'quiz/result_screen.dart';
 export 'quiz/retest_screen.dart';
 export 'review/review_screen.dart';
 export 'room/chat_screen.dart';
+export 'ranking/ranking_screen.dart';
 export 'settings/settings_screen.dart';

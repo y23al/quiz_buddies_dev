@@ -7,14 +7,8 @@ import '../models/models.dart';
 class CsvImportService {
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
-  // CSVをアセットから読み込みFirebaseに登録（既存データがあればスキップ）
+  // CSVをアセットから読み込みFirebaseに登録（常にUpsert）
   Future<CsvImportResult> importFromAsset(String assetPath) async {
-    // 既にインポート済みか確認（subjectsが存在すればスキップ）
-    final existing = await _db.child('subjects').get();
-    if (existing.exists) {
-      return CsvImportResult()..importedCount = -1; // スキップを示す
-    }
-
     final csvString = await rootBundle.loadString(assetPath);
     return _importCsvString(csvString);
   }
@@ -229,7 +223,7 @@ class CsvImportService {
       }
     }
     questions.sort((a, b) => a.questionNo.compareTo(b.questionNo));
-    return questions.take(10).toList();
+    return questions;
   }
 }
 

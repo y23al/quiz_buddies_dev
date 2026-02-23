@@ -12,4 +12,7 @@ export 'quiz/retest_screen.dart';
 export 'review/review_screen.dart';
 export 'room/chat_screen.dart';
 export 'ranking/ranking_screen.dart';
+export 'friends/friend_list_screen.dart';
+export 'friends/friend_chat_screen.dart';
+export 'join/join_redirect_screen.dart';
 export 'settings/settings_screen.dart';

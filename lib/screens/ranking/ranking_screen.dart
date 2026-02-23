@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../services/services.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/premium_components.dart';
 
 class RankingScreen extends ConsumerStatefulWidget {
   const RankingScreen({super.key});
@@ -44,50 +46,75 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
     final currentUserId = authState.user?.userId;
     final myIndex = _profiles.indexWhere((p) => p.userId == currentUserId);
 
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
-        title: const Text('ランキング', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+    // Premium header
+    final header = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF4CAF50)))
-          : Column(
-              children: [
-                // 自分のランクカード
-                if (myIndex >= 0)
-                  _buildMyRankCard(_profiles[myIndex], myIndex + 1),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 24),
+        ),
+        const SizedBox(width: 12),
+        const Text(
+          'ランキング',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+        ),
+      ]),
+    );
 
-                // リーダーボード
-                Expanded(
-                  child: _profiles.isEmpty
-                      ? const Center(child: Text('ランキングデータがありません'))
-                      : ListView.builder(
-                          itemCount: _profiles.length,
-                          itemBuilder: (context, index) {
-                            final profile = _profiles[index];
-                            final isMe = profile.userId == currentUserId;
-                            return _buildRankTile(profile, index + 1, isMe);
-                          },
-                        ),
-                ),
-              ],
-            ),
+    return Scaffold(
+      body: StarryBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              header,
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: AppColors.goldPrimary))
+                    : Column(
+                        children: [
+                          // 自分のランクカード
+                          if (myIndex >= 0)
+                            _buildMyRankCard(_profiles[myIndex], myIndex + 1),
+
+                          // リーダーボード
+                          Expanded(
+                            child: _profiles.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      'ランキングデータがありません',
+                                      style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    itemCount: _profiles.length,
+                                    itemBuilder: (context, index) {
+                                      final profile = _profiles[index];
+                                      final isMe = profile.userId == currentUserId;
+                                      return _buildRankTile(profile, index + 1, isMe);
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildMyRankCard(UserProfile profile, int position) {
     final tierColor = Color(profile.tierColorValue);
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: tierColor.withValues(alpha: 0.4), width: 2),
-        ),
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: PremiumCard(
+        type: PremiumCardType.dark,
         child: Column(
           children: [
             Row(
@@ -108,7 +135,10 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
                       Text(
                         profile.displayName,
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w600),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Row(
@@ -136,7 +166,7 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: profile.tierProgress,
-                  backgroundColor: Colors.grey[200],
+                  backgroundColor: AppColors.surfaceCard2,
                   color: tierColor,
                   minHeight: 8,
                 ),
@@ -144,7 +174,7 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
               const SizedBox(height: 4),
               Text(
                 '次のティアまであと${profile.pointsToNextTier}pt',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
             ],
           ],
@@ -157,7 +187,16 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
     final tierColor = Color(profile.tierColorValue);
 
     return Container(
-      color: isMe ? tierColor.withValues(alpha: 0.08) : null,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      decoration: BoxDecoration(
+        color: isMe
+            ? tierColor.withValues(alpha: 0.12)
+            : AppColors.surfaceCard2,
+        borderRadius: BorderRadius.circular(12),
+        border: isMe
+            ? Border.all(color: tierColor.withValues(alpha: 0.4), width: 1)
+            : null,
+      ),
       child: ListTile(
         leading: SizedBox(
           width: 40,
@@ -175,7 +214,10 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
                 : Text(
                     '#$position',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
           ),
         ),
@@ -183,13 +225,17 @@ class _RankingScreenState extends ConsumerState<RankingScreen> {
           profile.displayName,
           style: TextStyle(
             fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+            color: AppColors.textPrimary,
           ),
         ),
         subtitle: Row(
           children: [
             _buildTierBadge(profile.tier, tierColor),
             const SizedBox(width: 8),
-            Text('正解率 ${(profile.correctRate * 100).toStringAsFixed(0)}%'),
+            Text(
+              '正解率 ${(profile.correctRate * 100).toStringAsFixed(0)}%',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+            ),
           ],
         ),
         trailing: Text(

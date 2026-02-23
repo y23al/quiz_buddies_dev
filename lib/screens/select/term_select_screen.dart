@@ -1,70 +1,87 @@
-// 学期選択画面
+// 学期選択画面 — Premium Design
 import 'package:flutter/material.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/premium_components.dart';
 
 class TermSelectScreen extends StatelessWidget {
   final int grade;
-
   const TermSelectScreen({super.key, required this.grade});
 
   @override
   Widget build(BuildContext context) {
-    // 選択可能な学期（1〜5学期）
     final terms = List.generate(5, (i) => i + 1);
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
-        title: Text('$grade年生 - 学期を選択', style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '学期を選んでください',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 2,
-                ),
-                itemCount: terms.length,
-                itemBuilder: (context, index) {
-                  final term = terms[index];
-                  return Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        Navigator.pushNamed(
-                          context,
-                          '/select-subject',
-                          arguments: {'grade': grade, 'term': term},
-                        );
-                      },
-                      child: Center(
-                        child: Text(
-                          '第$term学期',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+      body: StarryBackground(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Text('学期を選んでください',
+                    style: AppTextStyles.body
+                        .copyWith(color: AppColors.textMuted)),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 2,
+                  ),
+                  itemCount: terms.length,
+                  itemBuilder: (context, index) {
+                    final term = terms[index];
+                    return PremiumCard(
+                      type: PremiumCardType.dark,
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        '/select-subject',
+                        arguments: {'grade': grade, 'term': term},
+                      ),
+                      padding: EdgeInsets.zero,
+                      child: Center(
+                        child: Text('第$term学期',
+                            style: AppTextStyles.section),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+            bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: const Icon(Icons.arrow_back_rounded,
+                color: AppColors.textPrimary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Text('$grade年生 - 学期を選択',
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+        ],
       ),
     );
   }

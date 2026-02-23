@@ -1,9 +1,11 @@
-// ホーム画面（v2: ルーム作成/参加・プロフィール）
+// ホーム画面（Premium: Navy × Gold × Ivory）
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/services.dart';
 import '../../models/models.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/premium_components.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -13,12 +15,13 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  static bool _hasImported = false; // アプリセッション内で1回だけインポート
+  static bool _hasImported = false;
 
   final CsvImportService _csvService = CsvImportService();
   final FirebaseSessionService _sessionService = FirebaseSessionService();
   final TextEditingController _inviteCodeController = TextEditingController();
   UserProfile? _profile;
+  final int _navIndex = 0;
 
   @override
   void initState() {
@@ -33,23 +36,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _initData() async {
-    // CSVインポート（アプリセッション内で初回のみ、バックグラウンドで実行）
     if (!_hasImported) {
       _hasImported = true;
       _csvService.importFromAsset('assets/karute_data.csv').ignore();
     }
-
-    // プロフィール読み込み
     _loadProfile();
   }
 
   Future<void> _loadProfile() async {
     final authState = ref.read(authProvider);
     if (authState.user != null) {
-      final profile = await _sessionService.getUserProfile(authState.user!.userId);
-      if (mounted) {
-        setState(() => _profile = profile);
-      }
+      final profile =
+          await _sessionService.getUserProfile(authState.user!.userId);
+      if (mounted) setState(() => _profile = profile);
     }
   }
 
@@ -57,7 +56,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final code = _inviteCodeController.text.trim();
     if (code.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('6桁の招待番号を入力してください')),
+        SnackBar(
+          content: const Text('6桁の招待番号を入力してください'),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
       return;
     }
@@ -83,8 +88,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('招待番号が無効か、募集が締め切られています')),
+        SnackBar(
+          content: const Text('招待番号が無効か、募集が締め切られています'),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
+    }
+  }
+
+  void _onNavTap(int index) {
+    if (index == _navIndex) return;
+    switch (index) {
+      case 0:
+        break; // 既にホーム
+      case 1:
+        Navigator.pushNamed(context, '/friends');
+      case 2:
+        Navigator.pushNamed(context, '/ranking');
+      case 3:
+        Navigator.pushNamed(context, '/settings');
     }
   }
 
@@ -93,32 +118,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
-        title: const Text('Quiz Buddies', style: TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.leaderboard, color: Colors.white),
-            onPressed: () => Navigator.pushNamed(context, '/ranking'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+      body: StarryBackground(
+        child: SafeArea(
+          bottom: false,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProfileCard(authState),
-              const SizedBox(height: 24),
-              _buildCreateRoomCard(),
-              const SizedBox(height: 16),
-              _buildJoinRoomCard(),
+              // ── App Header ──
+              _buildHeader(),
+              // ── Body ──
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screen,
+                    8,
+                    AppSpacing.screen,
+                    AppSpacing.screen,
+                  ),
+                  child: Column(
+                    children: [
+                      _buildUserCard(authState),
+                      const SizedBox(height: AppSpacing.gapLg),
+                      _buildCreateRoomCard(),
+                      const SizedBox(height: AppSpacing.gapLg),
+                      _buildJoinRoomCard(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+              // ── Bottom Nav ──
+              PremiumBottomNav(
+                currentIndex: _navIndex,
+                onTap: _onNavTap,
+              ),
             ],
           ),
         ),
@@ -126,155 +158,231 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildProfileCard(AuthState authState) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFF4CAF50),
-              radius: 28,
-              child: Text(
-                authState.user?.displayName.substring(0, 1) ?? '?',
-                style: const TextStyle(color: Colors.white, fontSize: 22),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    authState.user?.displayName ?? 'ゲスト',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  if (_profile != null) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _buildBadge(_profile!.tier, Color(_profile!.tierColorValue)),
-                        const SizedBox(width: 8),
-                        _buildBadge('${_profile!.totalPoints}pt', Colors.blue),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+  // ────────────────────────────────────────
+  // Header
+  // ────────────────────────────────────────
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.lineGold, width: 0.5),
         ),
       ),
+      child: Row(
+        children: [
+          // ロゴアイコン
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1A3A6A), Color(0xFF0E2045)],
+              ),
+              border: Border.all(color: AppColors.goldPrimary, width: 1.5),
+            ),
+            child: const Center(
+              child: Text(
+                'Q',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.goldPrimary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'QuizBuddies',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBadge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold),
+  // ────────────────────────────────────────
+  // User Card（アイボリー）
+  // ────────────────────────────────────────
+  Widget _buildUserCard(AuthState authState) {
+    final name = authState.user?.displayName ?? 'ゲスト';
+    final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
+
+    return PremiumCard(
+      type: PremiumCardType.light,
+      onTap: () => Navigator.pushNamed(context, '/settings'),
+      child: Row(
+        children: [
+          // ゴールド縁のアバター
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF5D4E37), Color(0xFF3E2F20)],
+              ),
+              border: Border.all(color: AppColors.goldPrimary, width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.goldPrimary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.surfaceCard,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: AppTextStyles.titleOnCard,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    RankChip.tier(_profile?.tier ?? 'Bronze'),
+                    const SizedBox(width: 8),
+                    RankChip.points(_profile?.totalPoints ?? 0),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.goldDeep,
+            size: 28,
+          ),
+        ],
       ),
     );
   }
 
+  // ────────────────────────────────────────
+  // メインCTA — ルームを作成
+  // ────────────────────────────────────────
   Widget _buildCreateRoomCard() {
-    return Card(
-      color: const Color(0xFF4CAF50),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.pushNamed(context, '/select-grade'),
-        child: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Row(
+    return PremiumCard(
+      type: PremiumCardType.dark,
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/select-grade'),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                const GoldIconCircle(icon: Icons.add_rounded, size: 44),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ルームを作成',
+                        style: AppTextStyles.section.copyWith(fontSize: 20),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '学年・学期・科目を選んでクイズを始めよう',
+                        style: AppTextStyles.body.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.goldPrimary,
+                  size: 28,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PremiumButton(
+            label: 'ルーム作成',
+            onPressed: () => Navigator.pushNamed(context, '/select-grade'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────
+  // 参加セクション — ルームに参加
+  // ────────────────────────────────────────
+  Widget _buildJoinRoomCard() {
+    return PremiumCard(
+      type: PremiumCardType.dark,
+      child: Column(
+        children: [
+          Row(
             children: [
-              Icon(Icons.add_circle_outline, color: Colors.white, size: 40),
-              SizedBox(width: 16),
+              const GoldIconCircle(
+                  icon: Icons.people_alt_rounded, size: 44),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ルームを作成',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      'ルームに参加',
+                      style: AppTextStyles.section.copyWith(fontSize: 20),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '学年・学期・科目を選んでクイズを始めよう',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      '招待番号を入力して参加しよう',
+                      style: AppTextStyles.body.copyWith(
+                        color: AppColors.textMuted,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward_ios, color: Colors.white),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildJoinRoomCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.group_add, color: Color(0xFF4CAF50), size: 28),
-                SizedBox(width: 12),
-                Text(
-                  'ルームに参加',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _inviteCodeController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 8,
-              ),
-              decoration: InputDecoration(
-                hintText: '000000',
-                hintStyle: TextStyle(color: Colors.grey[400], letterSpacing: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _joinByInviteCode,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4CAF50),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text(
-                  '参加する',
-                  style: TextStyle(fontSize: 16, color: Colors.white),
-                ),
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 16),
+          PremiumTextField(
+            controller: _inviteCodeController,
+            hintText: '000000',
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+          ),
+          const SizedBox(height: 14),
+          PremiumButton(
+            label: '参加する',
+            onPressed: _joinByInviteCode,
+          ),
+        ],
       ),
     );
   }

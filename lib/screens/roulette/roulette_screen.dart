@@ -6,6 +6,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/services.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/premium_components.dart';
 
 class RouletteScreen extends ConsumerStatefulWidget {
   final String sessionId;
@@ -212,98 +214,128 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
         _totalSpinSteps > 0 ? _spinStep / _totalSpinSteps : 0.0;
     final isSlowing = progress > 0.7;
 
-    return Scaffold(
-      backgroundColor: Colors.grey[900],
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Text(widget.subjectName,
-            style: const TextStyle(color: Colors.white)),
-        automaticallyImplyLeading: false,
+    // Premium header with gold line
+    final header = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white))
-          : _lectureNos.isEmpty
-              ? _buildEmptyState()
-              : SafeArea(
-                  child: Column(
-                    children: [
-                      const Spacer(flex: 1),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 24),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          widget.subjectName,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ]),
+    );
 
-                      // ステータステキスト
-                      AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 300),
-                        style: TextStyle(
-                          color: _decided
-                              ? const Color(0xFF4CAF50)
-                              : Colors.white70,
-                          fontSize: _decided ? 22 : 18,
-                          fontWeight:
-                              _decided ? FontWeight.bold : FontWeight.normal,
-                        ),
-                        child: Text(_decided ? '決定！' : 'ルーレット'),
-                      ),
-                      const SizedBox(height: 24),
+    return Scaffold(
+      body: StarryBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              header,
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: AppColors.goldPrimary))
+                    : _lectureNos.isEmpty
+                        ? _buildEmptyState()
+                        : Column(
+                            children: [
+                              const Spacer(flex: 1),
 
-                      // ルーレットエリア（中央メイン + 周囲に他ユーザー）
-                      SizedBox(
-                        height: 320,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            ..._buildOtherUserRoulettes(),
-                            _buildMainRoulette(isSlowing),
-                          ],
-                        ),
-                      ),
+                              // ステータステキスト
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 300),
+                                style: TextStyle(
+                                  color: _decided
+                                      ? AppColors.goldPrimary
+                                      : AppColors.textMuted,
+                                  fontSize: _decided ? 22 : 18,
+                                  fontWeight:
+                                      _decided ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                child: Text(_decided ? '決定！' : 'ルーレット'),
+                              ),
+                              const SizedBox(height: 24),
 
-                      const SizedBox(height: 24),
+                              // ルーレットエリア（中央メイン + 周囲に他ユーザー）
+                              SizedBox(
+                                height: 320,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    ..._buildOtherUserRoulettes(),
+                                    _buildMainRoulette(isSlowing),
+                                  ],
+                                ),
+                              ),
 
-                      if (_decided)
-                        const Text(
-                          'クイズを開始します...',
-                          style: TextStyle(
-                              color: Colors.white70, fontSize: 16),
-                        )
-                      else
-                        Text(
-                          isSlowing
-                              ? 'もうすぐ止まります...'
-                              : '授業回を選んでいます...',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 16),
-                        ),
+                              const SizedBox(height: 24),
 
-                      const Spacer(flex: 2),
-                    ],
-                  ),
-                ),
+                              if (_decided)
+                                const Text(
+                                  'クイズを開始します...',
+                                  style: TextStyle(
+                                      color: AppColors.textMuted, fontSize: 16),
+                                )
+                              else
+                                Text(
+                                  isSlowing
+                                      ? 'もうすぐ止まります...'
+                                      : '授業回を選んでいます...',
+                                  style: TextStyle(
+                                      color: AppColors.textPrimary.withValues(alpha: 0.4),
+                                      fontSize: 16),
+                                ),
+
+                              const Spacer(flex: 2),
+                            ],
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildMainRoulette(bool isSlowing) {
+    // Gold color for decided state and spinning accents
+    const goldColor = AppColors.goldPrimary;
+    const deepGold = AppColors.goldDeep;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: _decided ? 200 : 180,
       height: _decided ? 200 : 180,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _decided ? const Color(0xFF4CAF50) : Colors.grey[800],
+        color: _decided ? goldColor.withValues(alpha: 0.15) : AppColors.surfaceCard2,
         border: Border.all(
           color: _decided
-              ? const Color(0xFF4CAF50)
+              ? goldColor
               : isSlowing
-                  ? Colors.yellow
-                  : Colors.orange,
+                  ? goldColor
+                  : AppColors.lineGold,
           width: _decided ? 6 : 4,
         ),
         boxShadow: [
           BoxShadow(
             color: (_decided
-                    ? const Color(0xFF4CAF50)
+                    ? goldColor
                     : isSlowing
-                        ? Colors.yellow
-                        : Colors.orange)
+                        ? goldColor
+                        : deepGold)
                 .withValues(alpha: _decided ? 0.5 : 0.3),
             blurRadius: _decided ? 30 : 20,
             spreadRadius: _decided ? 8 : 5,
@@ -314,18 +346,18 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Text('第',
-              style: TextStyle(color: Colors.white70, fontSize: 20)),
+              style: TextStyle(color: AppColors.textMuted, fontSize: 20)),
           AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 150),
             style: TextStyle(
-              color: Colors.white,
+              color: _decided ? AppColors.goldPrimary : AppColors.textPrimary,
               fontSize: _decided ? 72 : 64,
               fontWeight: FontWeight.bold,
             ),
             child: Text('$_displayLecture'),
           ),
           const Text('回',
-              style: TextStyle(color: Colors.white70, fontSize: 20)),
+              style: TextStyle(color: AppColors.textMuted, fontSize: 20)),
         ],
       ),
     );
@@ -363,20 +395,22 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: rouletteDone
-                      ? const Color(0xFF4CAF50).withValues(alpha: 0.7)
-                      : Colors.grey[700],
+                      ? AppColors.goldPrimary.withValues(alpha: 0.15)
+                      : AppColors.surfaceCard2,
                   border: Border.all(
                     color: rouletteDone
-                        ? const Color(0xFF4CAF50)
-                        : Colors.orange.withValues(alpha: 0.5),
+                        ? AppColors.goldPrimary
+                        : AppColors.lineGold.withValues(alpha: 0.5),
                     width: 2,
                   ),
                 ),
                 child: Center(
                   child: Text(
                     displayVal != null ? '$displayVal' : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: rouletteDone
+                          ? AppColors.goldPrimary
+                          : AppColors.textPrimary,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
@@ -388,8 +422,8 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
                 displayName.length > 6
                     ? '${displayName.substring(0, 6)}...'
                     : displayName,
-                style:
-                    const TextStyle(color: Colors.white54, fontSize: 10),
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 10),
               ),
             ],
           ),
@@ -404,16 +438,17 @@ class _RouletteScreenState extends ConsumerState<RouletteScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.warning_amber, size: 64, color: Colors.orange[300]),
+          Icon(Icons.warning_amber, size: 64, color: AppColors.goldPrimary),
           const SizedBox(height: 16),
           const Text(
             '授業回が見つかりません',
-            style: TextStyle(color: Colors.white, fontSize: 18),
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 18),
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
+          PremiumButton(
+            label: '戻る',
             onPressed: () => Navigator.pop(context),
-            child: const Text('戻る'),
+            width: 160,
           ),
         ],
       ),

@@ -6,6 +6,8 @@ import '../../providers/providers.dart';
 import '../../services/services.dart';
 import '../../widgets/widgets.dart';
 import '../../models/models.dart';
+import '../../theme/design_tokens.dart';
+// premium_components.dart is already exported via widgets.dart
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String sessionId;
@@ -165,6 +167,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     showModalBottomSheet(
       context: context,
+      backgroundColor: AppColors.bgBase,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -173,14 +176,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Text(
                   '解説してほしい問題を選択',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1, color: AppColors.lineGold.withValues(alpha: 0.3)),
               ConstrainedBox(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(ctx).size.height * 0.4,
@@ -192,7 +199,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final q = Question.fromMap(widget.questions[index]);
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: Colors.deepPurple,
+                        backgroundColor: AppColors.accentBlue,
                         radius: 16,
                         child: Text(
                           '${q.questionNo}',
@@ -203,7 +210,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         q.text,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14),
+                        style: TextStyle(fontSize: 14, color: AppColors.textPrimary),
                       ),
                       onTap: () {
                         Navigator.pop(ctx);
@@ -338,147 +345,178 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final authState = ref.watch(authProvider);
     final chatItems = _buildChatItems();
 
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: Colors.purple,
-        title: const Text('みんなのチャット', style: TextStyle(color: Colors.white)),
-        automaticallyImplyLeading: false,
-        actions: [
+    // Premium header
+    final header = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'みんなのチャット',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+            ),
+          ),
+          // Timer badge
           Container(
-            margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: AppColors.surfaceCard2,
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.lineGold, width: 0.5),
             ),
             child: Text(
               '$_remainingSeconds秒',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: AppColors.goldPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Column(
+    );
+
+    return Scaffold(
+      body: StarryBackground(
+        child: SafeArea(
+          child: Stack(
             children: [
-              // 再試験通知バナー
-              if (_needsRetest)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: Colors.red[50],
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning, color: Colors.red, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'チャット終了後に再試験があります',
-                        style: TextStyle(color: Colors.red[700], fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // AIリプライモード表示
-              if (_isReplyingToAi)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  color: Colors.deepPurple[50],
-                  child: Row(
-                    children: [
-                      const Icon(Icons.smart_toy, color: Colors.deepPurple, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'AIに質問中 (Q${_currentAiQuestion?.questionNo ?? ""})',
-                          style: const TextStyle(color: Colors.deepPurple, fontSize: 13),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _exitAiMode,
-                        child: const Icon(Icons.close, color: Colors.deepPurple, size: 20),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // メッセージ一覧
-              Expanded(
-                child: chatItems.isEmpty && !_isAiThinking
-                    ? const Center(child: Text('メッセージがありません'))
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: chatItems.length + (_isAiThinking ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          // AI考え中インジケーター
-                          if (_isAiThinking && index == chatItems.length) {
-                            return _buildAiThinkingBubble();
-                          }
-
-                          final item = chatItems[index];
-                          final msg = item.message;
-                          final isAiMsg = msg.senderUserId == _aiSenderId;
-                          final isMyPrivateReply = item.isPrivate && !isAiMsg;
-                          final isMe = msg.senderUserId == authState.user?.userId;
-
-                          if (isAiMsg) {
-                            return _buildAiMessageBubble(msg);
-                          }
-
-                          if (isMyPrivateReply) {
-                            return _buildPrivateReplyBubble(msg);
-                          }
-
-                          return ChatMessageWidget(
-                            message: msg,
-                            isMe: isMe,
-                          );
-                        },
-                      ),
-              ),
-
-              // 入力欄
-              ChatInputWidget(
-                onSend: _sendMessage,
-                hintText: _isReplyingToAi ? 'AIに質問...' : null,
-              ),
-            ],
-          ),
-
-          // 右下の退出ボタン + ロボットアイコン
-          if (_showExtras)
-            Positioned(
-              right: 16,
-              bottom: 90,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              Column(
                 children: [
-                  // ロボットアイコン（LM Studio利用可能時のみ）
-                  if (_isLmStudioAvailable)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: FloatingActionButton.small(
-                        heroTag: 'ai_btn',
-                        backgroundColor: Colors.deepPurple,
-                        onPressed: _showQuestionSelector,
-                        child: const Icon(Icons.smart_toy, color: Colors.white, size: 22),
+                  header,
+
+                  // 再試験通知バナー
+                  if (_needsRetest)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: AppColors.danger.withValues(alpha: 0.15),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning, color: AppColors.danger, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'チャット終了後に再試験があります',
+                            style: TextStyle(color: AppColors.danger, fontSize: 13),
+                          ),
+                        ],
                       ),
                     ),
-                  // 退出ボタン
-                  FloatingActionButton.small(
-                    heroTag: 'exit_btn',
-                    backgroundColor: Colors.grey[600],
-                    onPressed: _exit,
-                    child: const Icon(Icons.exit_to_app, color: Colors.white, size: 22),
+
+                  // AIリプライモード表示
+                  if (_isReplyingToAi)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      color: AppColors.accentBlue.withValues(alpha: 0.15),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.smart_toy, color: AppColors.accentBlue, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'AIに質問中 (Q${_currentAiQuestion?.questionNo ?? ""})',
+                              style: const TextStyle(color: AppColors.accentBlue, fontSize: 13),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _exitAiMode,
+                            child: const Icon(Icons.close, color: AppColors.accentBlue, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // メッセージ一覧
+                  Expanded(
+                    child: chatItems.isEmpty && !_isAiThinking
+                        ? Center(
+                            child: Text(
+                              'メッセージがありません',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: chatItems.length + (_isAiThinking ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              // AI考え中インジケーター
+                              if (_isAiThinking && index == chatItems.length) {
+                                return _buildAiThinkingBubble();
+                              }
+
+                              final item = chatItems[index];
+                              final msg = item.message;
+                              final isAiMsg = msg.senderUserId == _aiSenderId;
+                              final isMyPrivateReply = item.isPrivate && !isAiMsg;
+                              final isMe = msg.senderUserId == authState.user?.userId;
+
+                              if (isAiMsg) {
+                                return _buildAiMessageBubble(msg);
+                              }
+
+                              if (isMyPrivateReply) {
+                                return _buildPrivateReplyBubble(msg);
+                              }
+
+                              return ChatMessageWidget(
+                                message: msg,
+                                isMe: isMe,
+                              );
+                            },
+                          ),
+                  ),
+
+                  // 入力欄
+                  ChatInputWidget(
+                    onSend: _sendMessage,
+                    hintText: _isReplyingToAi ? 'AIに質問...' : null,
                   ),
                 ],
               ),
-            ),
-        ],
+
+              // 右下の退出ボタン + ロボットアイコン
+              if (_showExtras)
+                Positioned(
+                  right: 16,
+                  bottom: 90,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ロボットアイコン（LM Studio利用可能時のみ）
+                      if (_isLmStudioAvailable)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: FloatingActionButton.small(
+                            heroTag: 'ai_btn',
+                            backgroundColor: AppColors.accentBlue,
+                            onPressed: _showQuestionSelector,
+                            child: const Icon(Icons.smart_toy, color: Colors.white, size: 22),
+                          ),
+                        ),
+                      // 退出ボタン
+                      FloatingActionButton.small(
+                        heroTag: 'exit_btn',
+                        backgroundColor: AppColors.surfaceCard2,
+                        onPressed: _exit,
+                        child: const Icon(Icons.exit_to_app, color: AppColors.textPrimary, size: 22),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -490,7 +528,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const CircleAvatar(
-            backgroundColor: Colors.deepPurple,
+            backgroundColor: AppColors.accentBlue,
             radius: 16,
             child: Icon(Icons.smart_toy, color: Colors.white, size: 18),
           ),
@@ -499,11 +537,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'AI解説',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.deepPurple[400],
+                    color: AppColors.accentBlue,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -511,26 +549,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.deepPurple[50],
+                    color: AppColors.accentBlue.withValues(alpha: 0.12),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(16),
                       topRight: Radius.circular(16),
                       bottomLeft: Radius.circular(4),
                       bottomRight: Radius.circular(16),
                     ),
-                    border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
+                    border: Border.all(color: AppColors.accentBlue.withValues(alpha: 0.25)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         msg.text ?? '',
-                        style: const TextStyle(color: Colors.black87, fontSize: 14, height: 1.5),
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.5),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'あなただけに表示されています',
-                        style: TextStyle(fontSize: 10, color: Colors.deepPurple[300]),
+                        style: TextStyle(fontSize: 10, color: AppColors.accentBlue.withValues(alpha: 0.6)),
                       ),
                     ],
                   ),
@@ -553,7 +591,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.deepPurple[100],
+                color: AppColors.accentBlue.withValues(alpha: 0.2),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(16),
                   topRight: Radius.circular(16),
@@ -563,7 +601,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               child: Text(
                 msg.text ?? '',
-                style: const TextStyle(color: Colors.black87, fontSize: 15),
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
               ),
             ),
           ),
@@ -580,7 +618,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const CircleAvatar(
-            backgroundColor: Colors.deepPurple,
+            backgroundColor: AppColors.accentBlue,
             radius: 16,
             child: Icon(Icons.smart_toy, color: Colors.white, size: 18),
           ),
@@ -588,24 +626,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.deepPurple[50],
+              color: AppColors.accentBlue.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
+              border: Border.all(color: AppColors.accentBlue.withValues(alpha: 0.25)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 16, height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.deepPurple[300],
+                    color: AppColors.accentBlue,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '考え中...',
-                  style: TextStyle(fontSize: 13, color: Colors.deepPurple[400]),
+                  style: TextStyle(fontSize: 13, color: AppColors.accentBlue.withValues(alpha: 0.8)),
                 ),
               ],
             ),

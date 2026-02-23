@@ -1,7 +1,9 @@
-// 科目選択画面
+// 科目選択画面 — Premium Design
 import 'package:flutter/material.dart';
 import '../../services/services.dart';
 import '../../models/models.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/premium_components.dart';
 
 class SubjectSelectScreen extends StatefulWidget {
   final int grade;
@@ -44,97 +46,120 @@ class _SubjectSelectScreenState extends State<SubjectSelectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF4CAF50),
-        title: Text(
-          '${widget.grade}年 第${widget.term}学期 - 科目選択',
-          style: const TextStyle(color: Colors.white),
+      body: StarryBackground(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              Expanded(child: _buildBody()),
+            ],
+          ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50)))
-          : _subjects == null || _subjects!.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.school_outlined, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '科目が見つかりません',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'この学年・学期にはまだ問題が登録されていません',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '科目を選んでください',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 24),
-                      Expanded(
-                        child: ListView.separated(
-                          itemCount: _subjects!.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 16),
-                          itemBuilder: (context, index) {
-                            final subject = _subjects![index];
-                            return Card(
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 16,
-                                ),
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.blue,
-                                  radius: 24,
-                                  child: Icon(
-                                    _getSubjectIcon(subject.subjectName),
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                title: Text(
-                                  subject.subjectName,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text('授業回: 全${subject.maxLectureNo}回'),
-                                trailing: const Icon(Icons.arrow_forward_ios),
-                                onTap: () {
-                                  // ルーム作成に遷移
-                                  Navigator.pushNamed(
-                                    context,
-                                    '/lobby',
-                                    arguments: {
-                                      'grade': widget.grade,
-                                      'term': widget.term,
-                                      'subjectId': subject.subjectId,
-                                      'subjectName': subject.subjectName,
-                                      'isHost': true,
-                                    },
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(
+            bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: const Icon(Icons.arrow_back_rounded,
+                color: AppColors.textPrimary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${widget.grade}年 第${widget.term}学期',
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.goldPrimary),
+      );
+    }
+    if (_subjects == null || _subjects!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.school_outlined,
+                size: 64, color: AppColors.textPrimary.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            const Text('科目が見つかりません',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 8),
+            Text('この学年・学期にはまだ問題が登録されていません',
+                style: TextStyle(
+                    color: AppColors.textPrimary.withValues(alpha: 0.5))),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(24),
+      itemCount: _subjects!.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final subject = _subjects![index];
+        return PremiumCard(
+          type: PremiumCardType.dark,
+          onTap: () {
+            Navigator.pushNamed(context, '/lobby', arguments: {
+              'grade': widget.grade,
+              'term': widget.term,
+              'subjectId': subject.subjectId,
+              'subjectName': subject.subjectName,
+              'isHost': true,
+            });
+          },
+          child: Row(
+            children: [
+              GoldIconCircle(
+                icon: _getSubjectIcon(subject.subjectName),
+                size: 48,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(subject.subjectName,
+                        style: AppTextStyles.section.copyWith(fontSize: 17)),
+                    const SizedBox(height: 4),
+                    Text('授業回: 全${subject.maxLectureNo}回',
+                        style: AppTextStyles.caption),
+                  ],
                 ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.goldPrimary, size: 28),
+            ],
+          ),
+        );
+      },
     );
   }
 

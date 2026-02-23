@@ -1,8 +1,12 @@
 // Quiz Buddies - メインエントリーポイント
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/screens.dart';
+
+/// ディープリンクで渡されたルームコード（認証後に消費）
+String? pendingRoomCode;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +22,16 @@ void main() async {
       measurementId: 'G-Q851WNPVM8',
     ),
   );
+
+  // ブラウザの実際のURLから招待コードを検出
+  // Uri.base は <base href="/"> の影響で正しいパスを返さないため window.location を使用
+  final uri = Uri.parse(html.window.location.href);
+  final path = uri.path;
+  if ((path == '/join' || path == '/join/') &&
+      uri.queryParameters.containsKey('code')) {
+    pendingRoomCode = uri.queryParameters['code'];
+  }
+
   runApp(const ProviderScope(child: QuizBuddiesApp()));
 }
 
@@ -31,29 +45,39 @@ class QuizBuddiesApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4CAF50),
+          seedColor: const Color(0xFFD6B56D),
+          brightness: Brightness.dark,
         ),
         useMaterial3: true,
         fontFamily: 'NotoSansJP',
+        scaffoldBackgroundColor: const Color(0xFF0B1020),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 0,
+          backgroundColor: Color(0xFF0B1020),
+          foregroundColor: Color(0xFFF8F1E6),
         ),
         cardTheme: CardThemeData(
           elevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
         ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
-      initialRoute: '/auth',
+      initialRoute: pendingRoomCode != null ? '/join' : '/auth',
       onGenerateRoute: _generateRoute,
     );
   }
@@ -182,6 +206,25 @@ class QuizBuddiesApp extends StatelessWidget {
             subjectName: args['subjectName'] as String? ?? '',
             lectureNo: args['lectureNo'] as int? ?? 0,
           ),
+        );
+
+      case '/friends':
+        return MaterialPageRoute(
+          builder: (_) => const FriendListScreen(),
+        );
+
+      case '/friend-chat':
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => FriendChatScreen(
+            friendUserId: args['friendUserId'] as String,
+            friendDisplayName: args['friendDisplayName'] as String,
+          ),
+        );
+
+      case '/join':
+        return MaterialPageRoute(
+          builder: (_) => const JoinRedirectScreen(),
         );
 
       case '/ranking':

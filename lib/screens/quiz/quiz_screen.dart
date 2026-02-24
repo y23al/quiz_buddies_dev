@@ -46,6 +46,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   bool _isCorrect = false;
   int _remainingSeconds = AppConfig.quizTimeSeconds;
   Timer? _timer;
+  // ユーザーの回答を記録（questionIndex → selectedChoice or null）
+  final Map<int, String?> _userAnswers = {};
 
   @override
   void initState() {
@@ -101,6 +103,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       _isAnswered = true;
       _isCorrect = false;
     });
+    _userAnswers[_currentIndex] = null;
     _recordAnswer(null);
     _showResultAndNext();
   }
@@ -122,6 +125,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       }
     });
 
+    _userAnswers[_currentIndex] = choice;
     _recordAnswer(choice);
     _showResultAndNext();
   }
@@ -169,6 +173,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
           'totalQuestions': _questions.length,
           'totalPoints': _totalPoints,
           'questions': _questions.map((q) => q.toMap()).toList(),
+          'userAnswers': _userAnswers,
         });
       }
     });

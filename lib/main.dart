@@ -172,6 +172,7 @@ class QuizBuddiesApp extends StatelessWidget {
             totalQuestions: args['totalQuestions'] as int? ?? 0,
             totalPoints: args['totalPoints'] as int? ?? 0,
             questions: args['questions'] as List<Map<String, dynamic>>? ?? [],
+            userAnswers: args['userAnswers'] as Map<int, String?>? ?? {},
           ),
         );
 
@@ -192,6 +193,7 @@ class QuizBuddiesApp extends StatelessWidget {
             correctCount: args['correctCount'] as int? ?? 0,
             totalQuestions: args['totalQuestions'] as int? ?? 0,
             questions: args['questions'] as List<Map<String, dynamic>>? ?? [],
+            userAnswers: args['userAnswers'] as Map<int, String?>? ?? {},
             subjectName: args['subjectName'] as String? ?? '',
             lectureNo: args['lectureNo'] as int? ?? 0,
           ),

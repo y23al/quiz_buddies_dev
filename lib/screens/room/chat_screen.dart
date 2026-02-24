@@ -1,4 +1,4 @@
-// チャット画面（PUBLIC共同チャット + プライベートAI解説）
+// チャット画面（PUBLIC共同チャット + プライベートAI解説 + 参加者/フレンド申請）
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,13 +7,13 @@ import '../../services/services.dart';
 import '../../widgets/widgets.dart';
 import '../../models/models.dart';
 import '../../theme/design_tokens.dart';
-// premium_components.dart is already exported via widgets.dart
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String sessionId;
   final int correctCount;
   final int totalQuestions;
   final List<Map<String, dynamic>> questions;
+  final Map<int, String?> userAnswers;
   final String subjectName;
   final int lectureNo;
 
@@ -23,6 +23,7 @@ class ChatScreen extends ConsumerStatefulWidget {
     this.correctCount = 0,
     this.totalQuestions = 0,
     this.questions = const [],
+    this.userAnswers = const {},
     this.subjectName = '',
     this.lectureNo = 0,
   });
@@ -33,8 +34,11 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final FirebaseRoomService _roomService = FirebaseRoomService();
+  final FirebaseSessionService _sessionService = FirebaseSessionService();
+  final FriendService _friendService = FriendService();
   final ScrollController _scrollController = ScrollController();
   StreamSubscription? _messageSubscription;
+  StreamSubscription? _participantSubscription;
   List<Message> _messages = [];
   int _remainingSeconds = AppConfig.commonRoomSeconds;
   Timer? _timer;
@@ -55,6 +59,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   static const String _aiSenderId = 'ai_explainer';
 
+  // 参加者一覧 + フレンド申請
+  List<Map<String, dynamic>> _participants = [];
+  final Map<String, String> _friendStates = {};
+  bool _showParticipants = false;
+
+  // 問題一覧パネル
+  bool _showQuestions = false;
+  Set<int> _wrongQuestionIndices = {};
+
   // 正解率60%未満で再試験
   bool get _needsRetest =>
       widget.totalQuestions > 0 &&
@@ -64,18 +77,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _watchMessages();
+    _watchParticipants();
     _startTimer();
     _startExtrasTimer();
     _checkLmStudio();
+    _buildWrongQuestions();
   }
 
   @override
   void dispose() {
     _messageSubscription?.cancel();
+    _participantSubscription?.cancel();
     _scrollController.dispose();
     _timer?.cancel();
     _extrasTimer?.cancel();
     super.dispose();
+  }
+
+  void _buildWrongQuestions() {
+    final wrongs = <int>{};
+    for (int i = 0; i < widget.questions.length; i++) {
+      final q = Question.fromMap(widget.questions[i]);
+      final userAnswer = widget.userAnswers[i];
+      if (userAnswer == null || !q.isCorrect(userAnswer)) {
+        wrongs.add(i);
+      }
+    }
+    _wrongQuestionIndices = wrongs;
   }
 
   void _watchMessages() {
@@ -87,6 +115,89 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollToBottom();
       }
     });
+  }
+
+  void _watchParticipants() {
+    _participantSubscription = _sessionService
+        .watchParticipants(widget.sessionId)
+        .listen((participants) {
+      if (mounted) {
+        setState(() => _participants = participants);
+        _checkFriendStates(participants);
+      }
+    });
+  }
+
+  Future<void> _checkFriendStates(List<Map<String, dynamic>> participants) async {
+    final myUserId = ref.read(authProvider).user?.userId;
+    if (myUserId == null) return;
+    for (final p in participants) {
+      final otherId = p['odId'] as String?;
+      if (otherId == null || otherId == myUserId) continue;
+      if (_friendStates.containsKey(otherId)) continue;
+      if (await _friendService.areFriends(myUserId, otherId)) {
+        _friendStates[otherId] = 'friend';
+      } else if (await _friendService.hasExistingRequest(myUserId, otherId)) {
+        _friendStates[otherId] = 'sent';
+      } else {
+        _friendStates[otherId] = 'send';
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _sendFriendRequest(String otherId, String otherName) async {
+    debugPrint('[FriendRequest] _sendFriendRequest called: otherId=$otherId, otherName=$otherName');
+    final authState = ref.read(authProvider);
+    debugPrint('[FriendRequest] user=${authState.user?.userId}, isGuest=${authState.user?.isGuest}');
+
+    if (authState.user == null || authState.user!.isGuest) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('ゲストユーザーはフレンド申請できません。ログインしてください。'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      debugPrint('[FriendRequest] calling friendService.sendFriendRequest...');
+      await _friendService.sendFriendRequest(
+        fromUserId: authState.user!.userId,
+        toUserId: otherId,
+        fromDisplayName: authState.user!.displayName,
+        toDisplayName: otherName,
+        sessionId: widget.sessionId,
+      );
+      debugPrint('[FriendRequest] sendFriendRequest succeeded');
+      if (mounted) {
+        setState(() => _friendStates[otherId] = 'sent');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$otherName にフレンド申請を送りました！'),
+            backgroundColor: AppColors.goldDeep,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[FriendRequest] ERROR: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('フレンド申請に失敗しました: $e'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
   }
 
   void _startTimer() {
@@ -229,8 +340,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   // AI解説をリクエスト
   Future<void> _requestAiExplanation(Question question) async {
-    print('[Chat] Requesting AI explanation for Q${question.questionNo}: ${question.text}');
-    print('[Chat] Choices: ${question.choices}, Answers: ${question.answers}');
     setState(() {
       _isAiThinking = true;
       _currentAiQuestion = question;
@@ -242,7 +351,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (!mounted) return;
 
-    print('[Chat] AI explanation result: ${explanation != null ? "OK (${explanation.length} chars)" : "NULL"}');
     final text = explanation ?? 'すみません、解説を生成できませんでした。もう一度お試しください。';
 
     final aiMessage = Message(
@@ -271,7 +379,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final authState = ref.read(authProvider);
     final userId = authState.user?.userId ?? 'me';
 
-    // ユーザーのプライベートメッセージを追加
     final userMsg = Message(
       messageId: 'priv_${DateTime.now().millisecondsSinceEpoch}',
       roomId: widget.sessionId,
@@ -289,7 +396,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     _scrollToBottom();
 
-    // AIの返答を取得
     final response = await AiService.explainQuestion(
       _currentAiQuestion!,
       _aiConversationHistory,
@@ -344,26 +450,79 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final chatItems = _buildChatItems();
+    final myUserId = authState.user?.userId;
+    final isGuest = authState.user?.isGuest ?? true;
 
-    // Premium header
+    // Premium header (戻るボタンなし)
     final header = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.lineGold, width: 0.5)),
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 24),
-          ),
-          const SizedBox(width: 12),
           const Expanded(
             child: Text(
               'みんなのチャット',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
             ),
           ),
+          // 問題一覧ボタン
+          if (widget.questions.isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() {
+                _showQuestions = !_showQuestions;
+                if (_showQuestions) _showParticipants = false;
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _showQuestions ? AppColors.goldPrimary.withValues(alpha: 0.15) : AppColors.surfaceCard2,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _showQuestions ? AppColors.goldPrimary : AppColors.lineGold, width: 0.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.quiz, color: AppColors.goldPrimary, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${widget.questions.length}問',
+                      style: const TextStyle(color: AppColors.goldPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (widget.questions.isNotEmpty)
+            const SizedBox(width: 8),
+          // 参加者ボタン
+          GestureDetector(
+            onTap: () => setState(() {
+              _showParticipants = !_showParticipants;
+              if (_showParticipants) _showQuestions = false;
+            }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _showParticipants ? AppColors.goldPrimary.withValues(alpha: 0.15) : AppColors.surfaceCard2,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _showParticipants ? AppColors.goldPrimary : AppColors.lineGold, width: 0.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.people, color: AppColors.goldPrimary, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_participants.length}',
+                    style: const TextStyle(color: AppColors.goldPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Timer badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -412,6 +571,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
 
+                  // 問題一覧パネル（トグル）
+                  if (_showQuestions)
+                    _buildQuestionsPanel(),
+
                   // AIリプライモード表示
                   if (_isReplyingToAi)
                     Container(
@@ -436,6 +599,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
 
+                  // 参加者パネル（トグル）
+                  if (_showParticipants)
+                    _buildParticipantsPanel(myUserId, isGuest),
+
                   // メッセージ一覧
                   Expanded(
                     child: chatItems.isEmpty && !_isAiThinking
@@ -450,7 +617,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             padding: const EdgeInsets.all(16),
                             itemCount: chatItems.length + (_isAiThinking ? 1 : 0),
                             itemBuilder: (context, index) {
-                              // AI考え中インジケーター
                               if (_isAiThinking && index == chatItems.length) {
                                 return _buildAiThinkingBubble();
                               }
@@ -459,7 +625,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               final msg = item.message;
                               final isAiMsg = msg.senderUserId == _aiSenderId;
                               final isMyPrivateReply = item.isPrivate && !isAiMsg;
-                              final isMe = msg.senderUserId == authState.user?.userId;
+                              final isMe = msg.senderUserId == myUserId;
 
                               if (isAiMsg) {
                                 return _buildAiMessageBubble(msg);
@@ -493,7 +659,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ロボットアイコン（LM Studio利用可能時のみ）
                       if (_isLmStudioAvailable)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -504,7 +669,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             child: const Icon(Icons.smart_toy, color: Colors.white, size: 22),
                           ),
                         ),
-                      // 退出ボタン
                       FloatingActionButton.small(
                         heroTag: 'exit_btn',
                         backgroundColor: AppColors.surfaceCard2,
@@ -519,6 +683,268 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
+  }
+
+  // 問題一覧パネル
+  Widget _buildQuestionsPanel() {
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.4,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard2.withValues(alpha: 0.5),
+        border: const Border(
+          bottom: BorderSide(color: AppColors.lineGold, width: 0.5),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Row(
+              children: [
+                const Text(
+                  '問題一覧',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.goldPrimary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (_wrongQuestionIndices.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '不正解 ${_wrongQuestionIndices.length}問',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              itemCount: widget.questions.length,
+              itemBuilder: (context, index) {
+                final q = Question.fromMap(widget.questions[index]);
+                final isWrong = _wrongQuestionIndices.contains(index);
+                final userAnswer = widget.userAnswers[index];
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isWrong
+                        ? AppColors.danger.withValues(alpha: 0.08)
+                        : AppColors.surfaceCard,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isWrong
+                          ? AppColors.danger.withValues(alpha: 0.4)
+                          : AppColors.lineGold.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 12,
+                            backgroundColor: isWrong ? AppColors.danger : AppColors.goldPrimary,
+                            child: Text(
+                              '${q.questionNo}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isWrong ? Icons.close : Icons.check_circle,
+                            color: isWrong ? AppColors.danger : AppColors.goldPrimary,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isWrong ? '不正解' : '正解',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isWrong ? AppColors.danger : AppColors.goldPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        q.text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: isWrong ? AppColors.danger : AppColors.textPrimary,
+                          fontWeight: isWrong ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '正解: ${q.answers.join(', ')}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.goldPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (isWrong && userAnswer != null)
+                        Text(
+                          'あなたの回答: $userAnswer',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                      if (isWrong && userAnswer == null)
+                        const Text(
+                          '時間切れ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 参加者パネル
+  Widget _buildParticipantsPanel(String? myUserId, bool isGuest) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard2.withValues(alpha: 0.5),
+        border: const Border(
+          bottom: BorderSide(color: AppColors.lineGold, width: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '参加者',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: AppColors.goldPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ..._participants.map((p) {
+            final otherId = p['odId'] as String?;
+            final name = p['displayName'] as String? ?? '???';
+            final isMe = otherId == myUserId;
+            final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
+            final state = _friendStates[otherId] ?? 'send';
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: isMe ? AppColors.goldPrimary : AppColors.surfaceCard2,
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isMe ? AppColors.textOnCard : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isMe ? '$name (あなた)' : name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                        fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  // フレンド申請ボタン（自分以外・ゲスト以外）
+                  if (!isMe && !isGuest && otherId != null)
+                    _buildFriendChip(state, otherId, name),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFriendChip(String state, String otherId, String name) {
+    switch (state) {
+      case 'friend':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.goldPrimary.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Text('フレンド', style: TextStyle(fontSize: 12, color: AppColors.goldPrimary, fontWeight: FontWeight.bold)),
+        );
+      case 'sent':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceCard2,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Text('申請済み', style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.bold)),
+        );
+      default:
+        return Material(
+          color: AppColors.goldPrimary,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            onTap: () {
+              debugPrint('[FriendChip] tapped! otherId=$otherId, name=$name');
+              _sendFriendRequest(otherId, name);
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: const Text('フレンド申請', style: TextStyle(fontSize: 12, color: AppColors.textOnCard, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        );
+    }
   }
 
   Widget _buildAiMessageBubble(Message msg) {

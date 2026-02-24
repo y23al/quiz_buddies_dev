@@ -28,14 +28,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authState = ref.read(authProvider);
-      if (authState.isAuthenticated && authState.user != null) {
-        Navigator.pushReplacementNamed(
-          context, pendingRoomCode != null ? '/join' : '/home',
-        );
-      }
-    });
   }
 
   @override
@@ -147,6 +139,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 初回ロード完了時に認証済みなら自動リダイレクト
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (previous != null && previous.isLoading && !next.isLoading &&
+          next.isAuthenticated && next.user != null) {
+        Navigator.pushReplacementNamed(
+          context, pendingRoomCode != null ? '/join' : '/home',
+        );
+      }
+    });
     final authState = ref.watch(authProvider);
 
     return Scaffold(

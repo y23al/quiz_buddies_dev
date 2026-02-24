@@ -18,6 +18,7 @@ class ResultScreen extends ConsumerStatefulWidget {
   final int totalQuestions;
   final int totalPoints;
   final List<Map<String, dynamic>> questions;
+  final Map<int, String?> userAnswers;
 
   const ResultScreen({
     super.key,
@@ -29,6 +30,7 @@ class ResultScreen extends ConsumerStatefulWidget {
     required this.totalQuestions,
     required this.totalPoints,
     required this.questions,
+    this.userAnswers = const {},
     bool isCorrect = false,
   });
 
@@ -124,6 +126,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               'correctCount': widget.correctCount,
               'totalQuestions': widget.totalQuestions,
               'questions': widget.questions,
+              'userAnswers': widget.userAnswers,
               'subjectName': widget.subjectName,
               'lectureNo': widget.lectureNo,
             });
@@ -151,23 +154,43 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
   Future<void> _sendFriendRequest(String otherId, String otherName) async {
     final authState = ref.read(authProvider);
-    if (authState.user == null || authState.user!.isGuest) return;
-
-    await _friendService.sendFriendRequest(
-      fromUserId: authState.user!.userId,
-      toUserId: otherId,
-      fromDisplayName: authState.user!.displayName,
-      toDisplayName: otherName,
-      sessionId: widget.sessionId,
-    );
-    setState(() => _friendStates[otherId] = 'sent');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$otherName にフレンド申請を送りました！'),
-          behavior: SnackBarBehavior.floating,
-        ),
+    if (authState.user == null || authState.user!.isGuest) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ゲストユーザーはフレンド申請できません。ログインしてください。'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      await _friendService.sendFriendRequest(
+        fromUserId: authState.user!.userId,
+        toUserId: otherId,
+        fromDisplayName: authState.user!.displayName,
+        toDisplayName: otherName,
+        sessionId: widget.sessionId,
       );
+      if (mounted) {
+        setState(() => _friendStates[otherId] = 'sent');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$otherName にフレンド申請を送りました！'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('フレンド申請に失敗しました: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 

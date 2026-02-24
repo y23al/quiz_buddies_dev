@@ -30,6 +30,7 @@ class FirebaseRoomService {
           senderUserId: msgData['senderUserId'] ?? '',
           type: MessageType.text,
           text: msgData['text'] ?? '',
+          displayName: msgData['displayName'] as String?,
           createdAt: DateTime.fromMillisecondsSinceEpoch(msgData['createdAt'] ?? 0),
         );
       }).toList();

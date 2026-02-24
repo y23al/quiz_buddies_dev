@@ -41,7 +41,7 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
 
-  AuthNotifier(this._authService) : super(AuthState()) {
+  AuthNotifier(this._authService) : super(AuthState(isLoading: true)) {
     _init();
   }
 

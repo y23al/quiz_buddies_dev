@@ -9,6 +9,7 @@ class Message {
   final MessageType type;
   final String? text;
   final String? imageUrl;
+  final String? displayName;
   final DateTime createdAt;
 
   Message({
@@ -18,6 +19,7 @@ class Message {
     required this.type,
     this.text,
     this.imageUrl,
+    this.displayName,
     required this.createdAt,
   });
 
@@ -32,6 +34,7 @@ class Message {
       ),
       text: map['text'],
       imageUrl: map['imageUrl'],
+      displayName: map['displayName'],
       createdAt: map['createdAt']?.toDate() ?? DateTime.now(),
     );
   }
@@ -44,6 +47,7 @@ class Message {
       'type': type.name.toUpperCase(),
       'text': text,
       'imageUrl': imageUrl,
+      'displayName': displayName,
       'createdAt': createdAt,
     };
   }

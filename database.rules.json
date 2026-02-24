@@ -1,6 +1,9 @@
 {
   "rules": {
     ".read": true,
-    ".write": true
+    ".write": true,
+    "friend_requests": {
+      ".indexOn": ["fromUserId", "toUserId"]
+    }
   }
 }

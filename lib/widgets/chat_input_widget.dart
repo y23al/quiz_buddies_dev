@@ -1,5 +1,6 @@
 // チャット入力ウィジェット
 import 'package:flutter/material.dart';
+import '../theme/design_tokens.dart';
 
 class ChatInputWidget extends StatefulWidget {
   final Function(String) onSend;
@@ -48,14 +49,10 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        color: AppColors.surfaceCard,
+        border: const Border(
+          top: BorderSide(color: AppColors.lineGold, width: 0.5),
+        ),
       ),
       child: SafeArea(
         child: Row(
@@ -63,16 +60,18 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.lineGold, width: 0.5),
                 ),
                 child: TextField(
                   controller: _controller,
+                  style: const TextStyle(color: Colors.black, fontSize: 15),
                   decoration: InputDecoration(
                     hintText: widget.hintText ?? 'メッセージを入力...',
-                    hintStyle: const TextStyle(color: Colors.grey),
+                    hintStyle: TextStyle(color: Colors.grey[500]),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
                     ),
@@ -90,12 +89,12 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: _canSend ? const Color(0xFF4CAF50) : Colors.grey[300],
+                  color: _canSend ? AppColors.goldPrimary : AppColors.surfaceCard2,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.send,
-                  color: _canSend ? Colors.white : Colors.grey[500],
+                  color: _canSend ? AppColors.textOnCard : AppColors.textMuted,
                   size: 20,
                 ),
               ),

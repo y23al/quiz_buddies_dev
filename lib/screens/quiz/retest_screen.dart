@@ -173,6 +173,7 @@ class _RetestScreenState extends State<RetestScreen> {
                 ),
                 child: Row(
                   children: [
+                    const SizedBox(width: 4),
                     const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
                     const SizedBox(width: 8),
                     Text(

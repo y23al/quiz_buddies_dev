@@ -18,15 +18,6 @@ class _JoinRedirectScreenState extends ConsumerState<JoinRedirectScreen> {
   final FirebaseSessionService _sessionService = FirebaseSessionService();
   bool _navigated = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Auth provider の _init() が完了するまで待ってからチェック
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted && !_navigated) _attemptJoin();
-    });
-  }
-
   Future<void> _attemptJoin() async {
     if (_navigated) return;
     _navigated = true;
@@ -45,9 +36,7 @@ class _JoinRedirectScreenState extends ConsumerState<JoinRedirectScreen> {
       return;
     }
 
-    // 認証済み → コードを消費してルームに参加
-    pendingRoomCode = null;
-
+    // 認証済み → ルームに参加
     try {
       final session = await _sessionService.joinByRoomCode(code);
       if (session != null && mounted) {
@@ -56,6 +45,8 @@ class _JoinRedirectScreenState extends ConsumerState<JoinRedirectScreen> {
           authState.user!.userId,
           authState.user!.displayName,
         );
+        // 参加成功後にコードを消費
+        pendingRoomCode = null;
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/lobby', arguments: {
             'sessionId': session['sessionId'],
@@ -68,9 +59,11 @@ class _JoinRedirectScreenState extends ConsumerState<JoinRedirectScreen> {
           });
         }
       } else {
+        pendingRoomCode = null;
         _showErrorAndGoHome();
       }
     } catch (_) {
+      pendingRoomCode = null;
       _showErrorAndGoHome();
     }
   }
@@ -95,7 +88,7 @@ class _JoinRedirectScreenState extends ConsumerState<JoinRedirectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Auth状態を監視 — isLoading が false になったら（遅延待ちの前に解決した場合）
+    // Auth状態を監視 — isLoading が false に確定してから _attemptJoin を実行
     final authState = ref.watch(authProvider);
     if (!_navigated && !authState.isLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

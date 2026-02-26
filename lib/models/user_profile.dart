@@ -5,6 +5,7 @@ class UserProfile {
   final int totalPoints;
   final int totalQuizzes;
   final int correctCount;
+  final String? avatarUrl;
 
   UserProfile({
     required this.userId,
@@ -12,6 +13,7 @@ class UserProfile {
     this.totalPoints = 0,
     this.totalQuizzes = 0,
     this.correctCount = 0,
+    this.avatarUrl,
   });
 
   // ティア判定
@@ -61,6 +63,7 @@ class UserProfile {
       totalPoints: map['totalPoints'] as int? ?? 0,
       totalQuizzes: map['totalQuizzes'] as int? ?? 0,
       correctCount: map['correctCount'] as int? ?? 0,
+      avatarUrl: map['avatarUrl'] as String?,
     );
   }
 
@@ -71,6 +74,7 @@ class UserProfile {
       'totalPoints': totalPoints,
       'totalQuizzes': totalQuizzes,
       'correctCount': correctCount,
+      if (avatarUrl != null) 'avatarUrl': avatarUrl,
     };
   }
 
@@ -79,6 +83,7 @@ class UserProfile {
     int? totalPoints,
     int? totalQuizzes,
     int? correctCount,
+    String? avatarUrl,
   }) {
     return UserProfile(
       userId: userId,
@@ -86,6 +91,7 @@ class UserProfile {
       totalPoints: totalPoints ?? this.totalPoints,
       totalQuizzes: totalQuizzes ?? this.totalQuizzes,
       correctCount: correctCount ?? this.correctCount,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 }

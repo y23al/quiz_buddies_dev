@@ -303,15 +303,13 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
                                       onPressed: _roomCode == null
                                           ? null
                                           : () {
-                                              final url =
-                                                  'https://quiz-buddies-3a96c.web.app/join?code=$_roomCode';
                                               Clipboard.setData(
-                                                  ClipboardData(text: url));
+                                                  ClipboardData(text: _roomCode!));
                                               ScaffoldMessenger.of(context)
                                                   .showSnackBar(
                                                 SnackBar(
                                                   content: const Text(
-                                                      '招待URLをコピーしました'),
+                                                      '招待番号をコピーしました'),
                                                   backgroundColor:
                                                       AppColors.goldDeep,
                                                   behavior: SnackBarBehavior
@@ -324,8 +322,8 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
                                                 ),
                                               );
                                             },
-                                      icon: const Icon(Icons.link, size: 18),
-                                      label: const Text('招待URLをコピー'),
+                                      icon: const Icon(Icons.copy, size: 18),
+                                      label: const Text('招待番号をコピー'),
                                       style: OutlinedButton.styleFrom(
                                         foregroundColor: AppColors.goldPrimary,
                                         side: const BorderSide(

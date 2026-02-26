@@ -1,9 +1,12 @@
 // 設定画面
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../constants/avatar_templates.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/avatar_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/premium_components.dart';
+import '../../widgets/user_avatar_widget.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +17,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _nameController;
+  final AvatarService _avatarService = AvatarService();
+  bool _isAvatarLoading = false;
 
   @override
   void initState() {
@@ -38,6 +43,200 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         backgroundColor: AppColors.goldDeep,
       ),
     );
+  }
+
+  Future<void> _showAvatarPicker() async {
+    final user = ref.read(authProvider).user;
+    if (user == null) return;
+    final isGuest = user.isGuest;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bgBase,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.4,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollController) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ドラッグハンドル
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.textMuted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text(
+                'アイコンを変更',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 写真を選択ボタン（ゲストは不可）
+              if (!isGuest)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await _pickPhotoAvatar();
+                    },
+                    icon: const Icon(Icons.photo_library_rounded, size: 20),
+                    label: const Text('写真を選択'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.goldPrimary,
+                      side: const BorderSide(color: AppColors.goldPrimary),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.button),
+                      ),
+                    ),
+                  ),
+                ),
+              if (!isGuest) const SizedBox(height: 16),
+
+              // テンプレート一覧
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'テンプレート',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.goldPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: GridView.builder(
+                  controller: scrollController,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.85,
+                  ),
+                  itemCount: kAvatarTemplates.length,
+                  itemBuilder: (_, i) {
+                    final t = kAvatarTemplates[i];
+                    final isSelected = user.avatarUrl == 'template:${t.id}';
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _selectTemplate(t.id);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: t.backgroundColor,
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.goldPrimary
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                t.emoji,
+                                style: const TextStyle(fontSize: 28),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            t.label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isSelected
+                                  ? AppColors.goldPrimary
+                                  : AppColors.textMuted,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.normal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              // デフォルトに戻す
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _removeAvatar();
+                },
+                child: const Text(
+                  'デフォルトに戻す',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectTemplate(String templateId) async {
+    final userId = ref.read(authProvider).user?.userId;
+    if (userId == null) return;
+    setState(() => _isAvatarLoading = true);
+    try {
+      final avatarUrl = await _avatarService.saveTemplateAvatar(userId, templateId);
+      ref.read(authProvider.notifier).updateAvatarUrl(avatarUrl);
+    } catch (_) {}
+    if (mounted) setState(() => _isAvatarLoading = false);
+  }
+
+  Future<void> _pickPhotoAvatar() async {
+    final userId = ref.read(authProvider).user?.userId;
+    if (userId == null) return;
+    setState(() => _isAvatarLoading = true);
+    try {
+      final avatarUrl = await _avatarService.pickAndSavePhotoAvatar(userId);
+      if (avatarUrl != null) {
+        ref.read(authProvider.notifier).updateAvatarUrl(avatarUrl);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isAvatarLoading = false);
+  }
+
+  Future<void> _removeAvatar() async {
+    final userId = ref.read(authProvider).user?.userId;
+    if (userId == null) return;
+    setState(() => _isAvatarLoading = true);
+    try {
+      await _avatarService.removeAvatar(userId);
+      ref.read(authProvider.notifier).updateAvatarUrl(null);
+    } catch (_) {}
+    if (mounted) setState(() => _isAvatarLoading = false);
   }
 
   void _confirmSignOut() {
@@ -119,26 +318,64 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         type: PremiumCardType.dark,
                         child: Column(
                           children: [
-                            // アバター with gold border
-                            Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.goldPrimary, width: 2.5),
-                                color: AppColors.surfaceCard2,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  user?.displayName.isNotEmpty == true
-                                      ? user!.displayName.substring(0, 1)
-                                      : '?',
-                                  style: const TextStyle(
-                                    color: AppColors.goldPrimary,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
+                            // アバター with 編集オーバーレイ
+                            GestureDetector(
+                              onTap: _showAvatarPicker,
+                              child: Stack(
+                                children: [
+                                  _isAvatarLoading
+                                      ? Container(
+                                          width: 80,
+                                          height: 80,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: AppColors.surfaceCard2,
+                                            border: Border.all(
+                                              color: AppColors.goldPrimary,
+                                              width: 2.5,
+                                            ),
+                                          ),
+                                          child: const Center(
+                                            child: SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppColors.goldPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : UserAvatarWidget(
+                                          avatarUrl: user?.avatarUrl,
+                                          displayName: user?.displayName ?? '?',
+                                          size: 80,
+                                          borderColor: AppColors.goldPrimary,
+                                          borderWidth: 2.5,
+                                        ),
+                                  // 編集アイコン
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 28,
+                                      height: 28,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppColors.goldPrimary,
+                                        border: Border.all(
+                                          color: AppColors.bgBase,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.edit,
+                                        size: 14,
+                                        color: AppColors.textOnCard,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 16),

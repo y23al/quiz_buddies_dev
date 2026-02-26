@@ -635,9 +635,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 return _buildPrivateReplyBubble(msg);
                               }
 
+                              // 送信者のアバターURLを参加者データから取得
+                              final senderAvatar = _participants
+                                  .where((p) => p['odId'] == msg.senderUserId)
+                                  .map((p) => p['avatarUrl'] as String?)
+                                  .firstOrNull;
+
                               return ChatMessageWidget(
                                 message: msg,
                                 isMe: isMe,
+                                avatarUrl: isMe
+                                    ? ref.read(authProvider).user?.avatarUrl
+                                    : senderAvatar,
                               );
                             },
                           ),
@@ -865,25 +874,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ..._participants.map((p) {
             final otherId = p['odId'] as String?;
             final name = p['displayName'] as String? ?? '???';
+            final avatarUrl = p['avatarUrl'] as String?;
             final isMe = otherId == myUserId;
-            final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
             final state = _friendStates[otherId] ?? 'send';
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: isMe ? AppColors.goldPrimary : AppColors.surfaceCard2,
-                    child: Text(
-                      initial,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isMe ? AppColors.textOnCard : AppColors.textPrimary,
-                      ),
-                    ),
+                  UserAvatarWidget(
+                    avatarUrl: isMe ? ref.read(authProvider).user?.avatarUrl : avatarUrl,
+                    displayName: name,
+                    size: 28,
+                    borderColor: isMe ? AppColors.goldPrimary : null,
+                    borderWidth: 1.5,
                   ),
                   const SizedBox(width: 8),
                   Expanded(

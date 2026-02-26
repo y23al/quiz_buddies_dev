@@ -358,7 +358,7 @@ class PremiumBottomNav extends StatelessWidget {
 
   static const _items = [
     _NavItem(Icons.home_rounded, 'ホーム'),
-    _NavItem(Icons.chat_bubble_rounded, 'チャット'),
+    _NavItem(Icons.people_rounded, 'フレンド'),
     _NavItem(Icons.emoji_events_rounded, 'ランク'),
     _NavItem(Icons.person_rounded, 'プロフィール'),
   ];

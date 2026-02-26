@@ -7,6 +7,7 @@ class AppUser {
   final bool isGuest;
   final DateTime createdAt;
   final List<String> blockedUserIds;
+  final String? avatarUrl;
 
   AppUser({
     required this.userId,
@@ -16,6 +17,7 @@ class AppUser {
     this.isGuest = true,
     required this.createdAt,
     this.blockedUserIds = const [],
+    this.avatarUrl,
   });
 
   factory AppUser.fromMap(Map<String, dynamic> map) {
@@ -27,6 +29,7 @@ class AppUser {
       isGuest: map['isGuest'] ?? true,
       createdAt: map['createdAt']?.toDate() ?? DateTime.now(),
       blockedUserIds: List<String>.from(map['blockedUserIds'] ?? []),
+      avatarUrl: map['avatarUrl'],
     );
   }
 
@@ -36,6 +39,7 @@ class AppUser {
     bool? emailVerified,
     bool? isGuest,
     List<String>? blockedUserIds,
+    String? avatarUrl,
   }) {
     return AppUser(
       userId: userId,
@@ -45,6 +49,7 @@ class AppUser {
       isGuest: isGuest ?? this.isGuest,
       createdAt: createdAt,
       blockedUserIds: blockedUserIds ?? this.blockedUserIds,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 
@@ -57,6 +62,7 @@ class AppUser {
       'isGuest': isGuest,
       'createdAt': createdAt,
       'blockedUserIds': blockedUserIds,
+      'avatarUrl': avatarUrl,
     };
   }
 }

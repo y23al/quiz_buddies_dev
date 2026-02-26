@@ -166,23 +166,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       children: [
                         const SizedBox(height: 40),
                         // ロゴ
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1A3A6A), Color(0xFF0E2045)],
-                            ),
-                            border: Border.all(
-                                color: AppColors.goldPrimary, width: 2),
-                          ),
-                          child: const Center(
-                            child: Text('Q',
-                                style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.goldPrimary)),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.asset(
+                            'assets/icon.png',
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
                           ),
                         ),
                         const SizedBox(height: 16),

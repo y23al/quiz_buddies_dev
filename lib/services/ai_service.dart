@@ -21,6 +21,9 @@ class AiService {
   static const String _lmStudioBaseUrl = 'http://127.0.0.1:1234/v1';
   static const Duration _timeout = Duration(seconds: 15);
 
+  // LM Studioでロード中のモデル名（自動検出）
+  static String? _loadedModelName;
+
   static final Random _random = Random();
 
   // ルームごとのAI参加者プール
@@ -178,14 +181,25 @@ class AiService {
     return _getRandomElement(messages);
   }
 
-  // LM Studioが起動しているか確認
+  // LM Studioが起動しているか確認し、ロード中のモデル名を取得
   static Future<bool> isLmStudioAvailable() async {
     try {
       final response = await http
           .get(Uri.parse('$_lmStudioBaseUrl/models'))
           .timeout(const Duration(seconds: 5));
       print('[AI] LM Studio check: status=${response.statusCode}');
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        try {
+          final data = jsonDecode(response.body);
+          final models = data['data'] as List?;
+          if (models != null && models.isNotEmpty) {
+            _loadedModelName = models[0]['id'] as String?;
+            print('[AI] Detected model: $_loadedModelName');
+          }
+        } catch (_) {}
+        return true;
+      }
+      return false;
     } catch (e) {
       print('[AI] LM Studio not available: $e');
       return false;
@@ -245,7 +259,7 @@ $choicesText
             Uri.parse('$_lmStudioBaseUrl/chat/completions'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'model': 'google/gemma-3n-e4b',
+              if (_loadedModelName != null) 'model': _loadedModelName,
               'messages': messages,
               'max_tokens': 500,
               'temperature': 0.7,

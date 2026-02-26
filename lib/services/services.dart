@@ -8,3 +8,4 @@ export 'firebase_session_service.dart';
 export 'wifi_service.dart';
 export 'csv_import_service.dart';
 export 'friend_service.dart';
+export 'avatar_service.dart';

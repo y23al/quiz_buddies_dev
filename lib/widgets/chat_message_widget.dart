@@ -2,34 +2,21 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../theme/design_tokens.dart';
+import 'user_avatar_widget.dart';
 
 class ChatMessageWidget extends StatelessWidget {
   final Message message;
   final bool isMe;
   final String? senderName;
+  final String? avatarUrl;
 
   const ChatMessageWidget({
     super.key,
     required this.message,
     required this.isMe,
     this.senderName,
+    this.avatarUrl,
   });
-
-  Color _avatarColor(String userId) {
-    final colors = [
-      Colors.blue,
-      Colors.teal,
-      Colors.orange,
-      Colors.indigo,
-      Colors.pink,
-      Colors.cyan,
-      Colors.deepPurple,
-      Colors.amber,
-      Colors.brown,
-      Colors.green,
-    ];
-    return colors[userId.hashCode.abs() % colors.length];
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,17 +34,11 @@ class ChatMessageWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isMe) ...[
-            CircleAvatar(
-              backgroundColor: _avatarColor(message.senderUserId),
-              radius: 16,
-              child: Text(
-                displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            UserAvatarWidget(
+              avatarUrl: avatarUrl,
+              displayName: displayName,
+              size: 32,
+              borderWidth: 1.5,
             ),
             const SizedBox(width: 8),
           ],

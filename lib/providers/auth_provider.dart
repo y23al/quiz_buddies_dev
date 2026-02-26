@@ -40,6 +40,7 @@ class AuthState {
 // 認証状態管理
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
+  final AvatarService _avatarService = AvatarService();
 
   AuthNotifier(this._authService) : super(AuthState(isLoading: true)) {
     _init();
@@ -50,7 +51,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final user = await _authService.getCurrentAuthUser();
       if (user != null) {
-        state = AuthState(user: user, isAuthenticated: true, isLoading: false);
+        // RTDBからアバターURL読込
+        final avatarUrl = await _avatarService.getAvatarUrl(user.userId);
+        final userWithAvatar = avatarUrl != null
+            ? user.copyWith(avatarUrl: avatarUrl)
+            : user;
+        state = AuthState(user: userWithAvatar, isAuthenticated: true, isLoading: false);
       } else {
         state = state.copyWith(isLoading: false);
       }
@@ -83,8 +89,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final user = await _authService.signInWithEmail(email, password);
+      // RTDBからアバターURL読込
+      final avatarUrl = await _avatarService.getAvatarUrl(user.userId);
+      final userWithAvatar = avatarUrl != null
+          ? user.copyWith(avatarUrl: avatarUrl)
+          : user;
       state = AuthState(
-        user: user,
+        user: userWithAvatar,
         isLoading: false,
         isAuthenticated: true,
       );
@@ -133,6 +144,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void updateDisplayName(String name) {
     if (state.user != null) {
       final updated = state.user!.copyWith(displayName: name);
+      state = state.copyWith(user: updated);
+    }
+  }
+
+  void updateAvatarUrl(String? avatarUrl) {
+    if (state.user != null) {
+      final updated = state.user!.copyWith(avatarUrl: avatarUrl);
       state = state.copyWith(user: updated);
     }
   }

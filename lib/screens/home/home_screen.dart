@@ -6,6 +6,7 @@ import '../../services/services.dart';
 import '../../models/models.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/premium_components.dart';
+import '../../widgets/user_avatar_widget.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -15,8 +16,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  static bool _hasImported = false;
-
   final CsvImportService _csvService = CsvImportService();
   final FirebaseSessionService _sessionService = FirebaseSessionService();
   final TextEditingController _inviteCodeController = TextEditingController();
@@ -36,10 +35,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _initData() async {
-    if (!_hasImported) {
-      _hasImported = true;
-      _csvService.importFromAsset('assets/karute_data.csv').ignore();
-    }
+    _csvService.importFromAsset('assets/karute_data.csv').ignore();
     _loadProfile();
   }
 
@@ -172,25 +168,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Row(
         children: [
           // ロゴアイコン
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A3A6A), Color(0xFF0E2045)],
-              ),
-              border: Border.all(color: AppColors.goldPrimary, width: 1.5),
-            ),
-            child: const Center(
-              child: Text(
-                'Q',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.goldPrimary,
-                ),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              'assets/icon.png',
+              width: 36,
+              height: 36,
+              fit: BoxFit.cover,
             ),
           ),
           const SizedBox(width: 10),
@@ -215,7 +199,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // ────────────────────────────────────────
   Widget _buildUserCard(AuthState authState) {
     final name = authState.user?.displayName ?? 'ゲスト';
-    final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
 
     return PremiumCard(
       type: PremiumCardType.light,
@@ -223,35 +206,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Row(
         children: [
           // ゴールド縁のアバター
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF5D4E37), Color(0xFF3E2F20)],
-              ),
-              border: Border.all(color: AppColors.goldPrimary, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.goldPrimary.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                initial,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.surfaceCard,
-                ),
-              ),
-            ),
+          UserAvatarWidget(
+            avatarUrl: authState.user?.avatarUrl,
+            displayName: name,
+            size: 56,
+            borderColor: AppColors.goldPrimary,
+            borderWidth: 3,
           ),
           const SizedBox(width: 14),
           Expanded(

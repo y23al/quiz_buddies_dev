@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../../services/friend_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/premium_components.dart';
+import '../../widgets/user_avatar_widget.dart';
 
 class FriendListScreen extends ConsumerStatefulWidget {
   const FriendListScreen({super.key});
@@ -195,7 +196,7 @@ class _FriendListScreenState extends ConsumerState<FriendListScreen> {
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final name = request['fromDisplayName'] as String? ?? '???';
     final requestId = request['requestId'] as String;
-    final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
+    final avatarUrl = request['fromAvatarUrl'] as String?;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -205,24 +206,10 @@ class _FriendListScreenState extends ConsumerState<FriendListScreen> {
         child: Row(
           children: [
             // アバター
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surfaceCard2,
-                border: Border.all(color: AppColors.goldPrimary, width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
+            UserAvatarWidget(
+              avatarUrl: avatarUrl,
+              displayName: name,
+              size: 44,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -303,7 +290,7 @@ class _FriendListScreenState extends ConsumerState<FriendListScreen> {
   Widget _buildFriendCard(Map<String, dynamic> friend) {
     final name = friend['displayName'] as String? ?? '???';
     final friendUserId = friend['userId'] as String;
-    final initial = name.isNotEmpty ? name.substring(0, 1) : '?';
+    final avatarUrl = friend['avatarUrl'] as String?;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -319,24 +306,10 @@ class _FriendListScreenState extends ConsumerState<FriendListScreen> {
         child: Row(
           children: [
             // アバター
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surfaceCard2,
-                border: Border.all(color: AppColors.goldPrimary, width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  initial,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
+            UserAvatarWidget(
+              avatarUrl: avatarUrl,
+              displayName: name,
+              size: 44,
             ),
             const SizedBox(width: 12),
             Expanded(

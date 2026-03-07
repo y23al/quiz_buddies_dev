@@ -1,41 +1,30 @@
 // チャットメッセージウィジェット
 import 'package:flutter/material.dart';
 import '../models/models.dart';
-import '../services/services.dart';
+import '../theme/design_tokens.dart';
+import 'user_avatar_widget.dart';
 
 class ChatMessageWidget extends StatelessWidget {
   final Message message;
   final bool isMe;
   final String? senderName;
+  final String? avatarUrl;
 
   const ChatMessageWidget({
     super.key,
     required this.message,
     required this.isMe,
     this.senderName,
+    this.avatarUrl,
   });
-
-  // senderUserIdからアバター色を決定的に生成
-  Color _avatarColor(String userId) {
-    final colors = [
-      Colors.blue,
-      Colors.teal,
-      Colors.orange,
-      Colors.indigo,
-      Colors.pink,
-      Colors.cyan,
-      Colors.deepPurple,
-      Colors.amber,
-      Colors.brown,
-      Colors.green,
-    ];
-    return colors[userId.hashCode.abs() % colors.length];
-  }
 
   @override
   Widget build(BuildContext context) {
+    // 表示名: パラメータ → Message.displayName → フォールバック
     final displayName = senderName ??
-        AiService.getParticipantName(message.senderUserId) ??
+        (message.displayName != null && message.displayName!.isNotEmpty
+            ? message.displayName!
+            : null) ??
         '参加者';
 
     return Padding(
@@ -45,17 +34,11 @@ class ChatMessageWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isMe) ...[
-            CircleAvatar(
-              backgroundColor: _avatarColor(message.senderUserId),
-              radius: 16,
-              child: Text(
-                displayName.isNotEmpty ? displayName.substring(0, 1) : '?',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            UserAvatarWidget(
+              avatarUrl: avatarUrl,
+              displayName: displayName,
+              size: 32,
+              borderWidth: 1.5,
             ),
             const SizedBox(width: 8),
           ],
@@ -69,9 +52,9 @@ class ChatMessageWidget extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       displayName,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: AppColors.textMuted,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -82,25 +65,23 @@ class ChatMessageWidget extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: isMe ? const Color(0xFF4CAF50) : Colors.white,
+                    color: isMe
+                        ? AppColors.goldPrimary
+                        : AppColors.surfaceCard,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
                       bottomLeft: Radius.circular(isMe ? 16 : 4),
                       bottomRight: Radius.circular(isMe ? 4 : 16),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    border: isMe
+                        ? null
+                        : Border.all(color: AppColors.lineGold, width: 0.5),
                   ),
                   child: Text(
                     message.text ?? '',
                     style: TextStyle(
-                      color: isMe ? Colors.white : Colors.black87,
+                      color: isMe ? AppColors.textOnCard : Colors.black87,
                       fontSize: 15,
                     ),
                   ),
@@ -108,9 +89,9 @@ class ChatMessageWidget extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   _formatTime(message.createdAt),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 10,
-                    color: Colors.grey[500],
+                    color: AppColors.textMuted,
                   ),
                 ),
               ],

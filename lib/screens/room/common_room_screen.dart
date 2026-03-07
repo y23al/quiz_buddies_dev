@@ -1,4 +1,5 @@
-// 共通ルーム画面
+// 共通ルーム画面（全員集合）
+// 人間 + AI が参加
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,21 +25,48 @@ class _CommonRoomScreenState extends ConsumerState<CommonRoomScreen> {
   Timer? _timer;
   Timer? _aiMessageTimer;
   int _remainingSeconds = AppConfig.commonRoomSeconds;
-  final List<Message> _messages = [];
+  List<Message> _messages = [];
   final ScrollController _scrollController = ScrollController();
+  final FirebaseRoomService _firebaseService = FirebaseRoomService();
+  StreamSubscription<List<Message>>? _messageSubscription;
+  String get _roomId => 'common_${widget.sessionId}';
 
   @override
   void initState() {
     super.initState();
+    _joinRoom();
     _startTimer();
     _startAIMessages();
+  }
+
+  void _joinRoom() {
+    final authState = ref.read(authProvider);
+    if (authState.user == null) return;
+
+    // Firebaseルームに参加
+    _firebaseService.joinRoom(_roomId, authState.user!.userId, authState.user!.displayName);
+
+    // メッセージをリアルタイムで監視
+    _messageSubscription = _firebaseService.watchMessages(_roomId).listen((messages) {
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+        });
+        _scrollToBottom();
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _aiMessageTimer?.cancel();
+    _messageSubscription?.cancel();
     _scrollController.dispose();
+    final authState = ref.read(authProvider);
+    if (authState.user != null) {
+      _firebaseService.leaveRoom(_roomId, authState.user!.userId);
+    }
     super.dispose();
   }
 
@@ -65,16 +93,19 @@ class _CommonRoomScreenState extends ConsumerState<CommonRoomScreen> {
       if (mounted) {
         final quiz = ref.read(sessionProvider).currentQuiz;
         final aiMessage = await AiService.generateAIMessageAsync(
-          'common_${widget.sessionId}',
+          _roomId,
           'common',
           chatHistory: _messages,
           quiz: quiz,
         );
         if (mounted) {
-          setState(() {
-            _messages.add(aiMessage);
-          });
-          _scrollToBottom();
+          // AIメッセージをFirebaseに送信
+          await _firebaseService.sendMessage(
+            _roomId,
+            aiMessage.senderUserId,
+            aiMessage.text ?? '',
+            displayName: AiService.getParticipantName(aiMessage.senderUserId),
+          );
           _scheduleNextAIMessage();
         }
       }
@@ -101,23 +132,17 @@ class _CommonRoomScreenState extends ConsumerState<CommonRoomScreen> {
     );
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text) async {
     final authState = ref.read(authProvider);
     if (authState.user == null) return;
 
-    final message = Message(
-      messageId: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      roomId: 'common_${widget.sessionId}',
-      senderUserId: authState.user!.userId,
-      type: MessageType.text,
-      text: text,
-      createdAt: DateTime.now(),
+    // Firebaseにメッセージを送信
+    await _firebaseService.sendMessage(
+      _roomId,
+      authState.user!.userId,
+      text,
+      displayName: authState.user!.displayName,
     );
-
-    setState(() {
-      _messages.add(message);
-    });
-    _scrollToBottom();
   }
 
   @override
@@ -138,7 +163,7 @@ class _CommonRoomScreenState extends ConsumerState<CommonRoomScreen> {
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -192,10 +217,45 @@ class _CommonRoomScreenState extends ConsumerState<CommonRoomScreen> {
             ),
           ),
 
+          // 退出ボタン
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _goToHome,
+                icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                label: const Text(
+                  '退出',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           // 入力エリア
           ChatInputWidget(onSend: _sendMessage),
         ],
       ),
+    );
+  }
+
+  void _goToHome() {
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/home',
+      (route) => false,
     );
   }
 }

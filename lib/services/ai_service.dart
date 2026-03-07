@@ -21,6 +21,9 @@ class AiService {
   static const String _lmStudioBaseUrl = 'http://127.0.0.1:1234/v1';
   static const Duration _timeout = Duration(seconds: 15);
 
+  // LM Studioでロード中のモデル名（自動検出）
+  static String? _loadedModelName;
+
   static final Random _random = Random();
 
   // ルームごとのAI参加者プール
@@ -176,6 +179,108 @@ class AiService {
     final key = _getFallbackKey(roomType, isCorrectUser: isCorrectUser);
     final messages = _fallbackMessages[key] ?? _fallbackMessages['common']!;
     return _getRandomElement(messages);
+  }
+
+  // LM Studioが起動しているか確認し、ロード中のモデル名を取得
+  static Future<bool> isLmStudioAvailable() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_lmStudioBaseUrl/models'))
+          .timeout(const Duration(seconds: 5));
+      print('[AI] LM Studio check: status=${response.statusCode}');
+      if (response.statusCode == 200) {
+        try {
+          final data = jsonDecode(response.body);
+          final models = data['data'] as List?;
+          if (models != null && models.isNotEmpty) {
+            _loadedModelName = models[0]['id'] as String?;
+            print('[AI] Detected model: $_loadedModelName');
+          }
+        } catch (_) {}
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('[AI] LM Studio not available: $e');
+      return false;
+    }
+  }
+
+  // 問題の解説を生成
+  static Future<String?> explainQuestion(
+    Question question,
+    List<Map<String, String>> conversationHistory,
+  ) async {
+    final choicesText = question.choices.entries
+        .where((e) => e.value.isNotEmpty)
+        .map((e) => '${e.key}. ${e.value}')
+        .join('\n');
+    final answersText = question.answers.join(', ');
+
+    final systemPrompt = '''あなたはクイズの解説をする優しい先生です。
+以下の問題について、学生に分かりやすく解説してください。
+
+【問題】${question.text}
+【選択肢】
+$choicesText
+【正解】$answersText
+
+解説のポイント:
+- なぜその答えが正解なのか理由を説明する
+- 不正解の選択肢がなぜ間違いなのかも簡潔に触れる
+- 日本語で分かりやすく、200文字程度で回答する''';
+
+    return _callLmStudioForExplanation(systemPrompt, conversationHistory);
+  }
+
+  // AI解説用のLM Studio呼び出し（長めの回答を許可）
+  static Future<String?> _callLmStudioForExplanation(
+    String systemPrompt,
+    List<Map<String, String>> conversationHistory,
+  ) async {
+    try {
+      final messages = <Map<String, String>>[
+        {'role': 'system', 'content': systemPrompt},
+        ...conversationHistory,
+      ];
+
+      if (conversationHistory.isEmpty) {
+        messages.add({
+          'role': 'user',
+          'content': 'この問題を解説してください。',
+        });
+      }
+
+      print('[AI] Sending explanation request to LM Studio...');
+      print('[AI] Messages count: ${messages.length}');
+
+      final response = await http
+          .post(
+            Uri.parse('$_lmStudioBaseUrl/chat/completions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              if (_loadedModelName != null) 'model': _loadedModelName,
+              'messages': messages,
+              'max_tokens': 500,
+              'temperature': 0.7,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+
+      print('[AI] Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final content = data['choices']?[0]?['message']?['content'] as String?;
+        print('[AI] Got content: ${content?.substring(0, (content.length > 50 ? 50 : content.length))}...');
+        return content?.trim();
+      }
+      print('[AI] Error response: ${response.body}');
+      return null;
+    } catch (e) {
+      print('[AI] Exception in explanation: $e');
+      return null;
+    }
   }
 
   // LM Studio APIを呼び出し

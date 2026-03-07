@@ -47,9 +47,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _showExtras = false;
   Timer? _extrasTimer;
 
-  // LM Studio
-  bool _isLmStudioAvailable = false;
-
   // プライベートAIメッセージ
   final List<Message> _privateMessages = [];
   bool _isReplyingToAi = false;
@@ -80,7 +77,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _watchParticipants();
     _startTimer();
     _startExtrasTimer();
-    _checkLmStudio();
     _buildWrongQuestions();
   }
 
@@ -218,11 +214,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _checkLmStudio() async {
-    final available = await AiService.isLmStudioAvailable();
-    if (mounted) setState(() => _isLmStudioAvailable = available);
-  }
-
   void _onChatEnd() {
     if (!mounted) return;
     if (_needsRetest) {
@@ -273,8 +264,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // AI問題選択ダイアログ
-  void _showQuestionSelector() {
+  Future<void> _showQuestionSelector() async {
     if (widget.questions.isEmpty) return;
+
+    // LM Studio の接続をその場で確認
+    final available = await AiService.isLmStudioAvailable();
+    if (!mounted) return;
+    if (!available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('LM Studio が起動していません。\nAI解説を使うには localhost:1234 でLM Studioを起動してください。'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -668,16 +674,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (_isLmStudioAvailable)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: FloatingActionButton.small(
-                            heroTag: 'ai_btn',
-                            backgroundColor: AppColors.accentBlue,
-                            onPressed: _showQuestionSelector,
-                            child: const Icon(Icons.smart_toy, color: Colors.white, size: 22),
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: FloatingActionButton.small(
+                          heroTag: 'ai_btn',
+                          backgroundColor: AppColors.accentBlue,
+                          onPressed: _showQuestionSelector,
+                          child: const Icon(Icons.smart_toy, color: Colors.white, size: 22),
                         ),
+                      ),
                       FloatingActionButton.small(
                         heroTag: 'exit_btn',
                         backgroundColor: AppColors.surfaceCard2,
